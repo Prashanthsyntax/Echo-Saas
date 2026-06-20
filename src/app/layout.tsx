@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -20,10 +21,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("dark", inter.variable)}>
-      <body className="bg-background text-foreground antialiased font-sans">
-        {children}
-      </body>
-    </html>
+    <ClerkProvider
+      appearance={{
+        baseTheme: undefined,
+        variables: {
+          colorPrimary: "hsl(263 70% 58%)",
+          colorBackground: "hsl(240 8% 9%)",
+          colorText: "hsl(240 5% 96%)",
+          colorInputBackground: "hsl(240 6% 14%)",
+          colorInputText: "hsl(240 5% 96%)",
+          borderRadius: "0.625rem",
+        },
+      }}
+    >
+      <html lang="en" className={cn("dark", inter.variable)}>
+        <body className="bg-background text-foreground antialiased font-sans">
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
