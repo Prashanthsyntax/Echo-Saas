@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum VideoStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model User {
+  id          String       @id @default(cuid())
+  clerkId     String       @unique
+  email       String       @unique
+  name        String?
+  imageUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  memberships Membership[]
+  videos      Video[]
+  comments    Comment[]
+}
+
+model Workspace {
+  id               String         @id @default(cuid())
+  name             String
+  plan             Plan           @default(FREE)
+  stripeCustomerId String?        @unique
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  memberships      Membership[]
+  videos           Video[]
+  folders          Folder[]
+  subscription     Subscription?
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  role        Role      @default(MEMBER)
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  @@unique([userId, workspaceId])
+}
+
+model Folder {
+  id          String    @id @default(cuid())
+  name        String
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  parent      Folder?   @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parentId    String?
+  children    Folder[]  @relation("FolderToFolder")
+
+  videos      Video[]
+}
+
+model Video {
+  id            String      @id @default(cuid())
+  title         String      @default("Untitled Video")
+  description   String?
+  url           String?
+  thumbnailUrl  String?
+  duration      Int?
+  status        VideoStatus @default(UPLOADING)
+  transcript    String?
+  summary       String?
+  viewCount     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String
+
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+
+  folder        Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folderId      String?
+
+  comments      Comment[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  timestamp Int?
+  createdAt DateTime @default(now())
+
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId   String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  stripeSubscriptionId String    @unique
+  status               String
+  plan                 Plan      @default(FREE)
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId          String    @unique
+}
