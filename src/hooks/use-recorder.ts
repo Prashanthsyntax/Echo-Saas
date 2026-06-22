@@ -66,6 +66,55 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     [options, stopTimer, stopAllTracks],
   );
 
+  const stopRecording = useCallback(() => {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
+      setStatus("stopped");
+    }
+    stopAllTracks();
+  }, [stopAllTracks]);
+
+  const uploadVideo = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      setStatus("uploading");
+
+      try {
+        if (blob.size === 0) {
+          throw new Error("Recording is empty. Please try recording again.");
+        }
+
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+        const filename = `recording-${Date.now()}.${ext}`;
+        const formData = new FormData();
+        formData.append("file", blob, filename);
+        formData.append("contentType", mimeType);
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error ?? "Upload failed");
+        }
+
+        const { videoId: newVideoId } = await res.json();
+
+        setVideoId(newVideoId);
+        setStatus("done");
+        options.onUploadComplete?.(newVideoId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        handleError(msg);
+      }
+    },
+    [handleError, options],
+  );
+
   const requestPermissions = useCallback(async () => {
     setStatus("requesting");
     setError(null);
@@ -122,7 +171,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           : "Failed to access recording devices.";
       handleError(msg);
     }
-  }, [mode, handleError]);
+  }, [mode, handleError, stopRecording]);
 
   const startRecording = useCallback(() => {
     if (!streamRef.current) return;
@@ -146,18 +195,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     mediaRecorderRef.current = recorder;
     startTimer();
     setStatus("recording");
-  }, [startTimer, stopTimer]);
-
-  const stopRecording = useCallback(() => {
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
-      setStatus("stopped");
-    }
-    stopAllTracks();
-  }, [stopAllTracks]);
+  }, [startTimer, stopTimer, uploadVideo]);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
@@ -185,42 +223,6 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     setError(null);
     setVideoId(null);
   }, [stopTimer, stopAllTracks]);
-
-  const uploadVideo = async (blob: Blob, mimeType: string) => {
-    setStatus("uploading");
-
-    try {
-      if (blob.size === 0) {
-        throw new Error("Recording is empty. Please try recording again.");
-      }
-
-      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
-      const filename = `recording-${Date.now()}.${ext}`;
-      const formData = new FormData();
-      formData.append("file", blob, filename);
-      formData.append("contentType", mimeType);
-
-      // send to our API which handles Supabase upload
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Upload failed");
-      }
-
-      const { videoId: newVideoId } = await res.json();
-
-      setVideoId(newVideoId);
-      setStatus("done");
-      options.onUploadComplete?.(newVideoId);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Upload failed";
-      handleError(msg);
-    }
-  };
 
   return {
     status,
