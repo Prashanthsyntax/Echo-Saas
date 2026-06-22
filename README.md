@@ -17,3 +17,4 @@ Open Prisma Studio:
 npx prisma studio
 ```
 
+![alt text](images/prisma.png)
