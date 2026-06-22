@@ -19,7 +19,7 @@ export function Hero() {
           className="gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
         >
           <Circle className="h-2 w-2 fill-accent text-accent" />
-          Now recording, instantly
+          ARK Groups
         </Badge>
 
         <h1 className="mt-6 text-4xl font-semibold tracking-tight text-balance md:text-6xl">
