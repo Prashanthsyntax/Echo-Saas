@@ -29,7 +29,7 @@ export default async function DashboardPage() {
               : `${videos.length} video${videos.length === 1 ? "" : "s"}`}
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="bg-white text-black">
           <Link href="/record" className="gap-2">
             <Plus className="h-4 w-4" />
             New recording
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
             Hit record, talk through whatevers on your screen, and get a
             shareable link in seconds.
           </p>
-          <Button asChild className="mt-6 gap-2">
+          <Button asChild className="mt-6 gap-2 bg-white text-black">
             <Link href="/record">
               <Plus className="h-4 w-4" />
               Start recording
