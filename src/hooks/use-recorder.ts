@@ -190,21 +190,20 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     setStatus("uploading");
 
     try {
+      if (blob.size === 0) {
+        throw new Error("Recording is empty. Please try recording again.");
+      }
+
       const ext = mimeType.includes("mp4") ? "mp4" : "webm";
       const filename = `recording-${Date.now()}.${ext}`;
-
-      // convert blob to base64
-      const base64 = await blobToBase64(blob);
+      const formData = new FormData();
+      formData.append("file", blob, filename);
+      formData.append("contentType", mimeType);
 
       // send to our API which handles Supabase upload
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename,
-          contentType: mimeType,
-          fileData: base64,
-        }),
+        body: formData,
       });
 
       if (!res.ok) {
@@ -251,22 +250,14 @@ function formatDuration(seconds: number): string {
 
 function getSupportedMimeType(): string {
   const types = [
+    "video/mp4;codecs=avc1,mp4a",
+    "video/mp4",
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm",
-    "video/mp4",
   ];
   for (const type of types) {
     if (MediaRecorder.isTypeSupported(type)) return type;
   }
   return "video/webm";
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
 }
