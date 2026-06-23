@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
+import { VideoTitle } from "@/components/shared/video-title";
 import { VideoPlayer } from "@/components/shared/video-player";
 import { CommentsSection } from "@/components/shared/comments-section";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -64,16 +65,19 @@ export default async function VideoPage({ params }: VideoPageProps) {
 
             {/* metadata */}
             <div className="space-y-3">
-              <h1 className="text-xl font-semibold tracking-tight">
-                {video.title}
-              </h1>
+              <VideoTitle
+                videoId={video.id}
+                initialTitle={video.title}
+                ownerId={video.userId}
+              />
 
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Avatar className="h-5 w-5">
                     <AvatarImage src={video.user.imageUrl ?? ""} />
                     <AvatarFallback className="text-[10px]">
-                      {video.user.name?.[0] ?? video.user.email[0].toUpperCase()}
+                      {video.user.name?.[0] ??
+                        video.user.email[0].toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <span>{video.user.name ?? video.user.email}</span>
