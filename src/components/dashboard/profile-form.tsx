@@ -5,14 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { CheckCircle2 } from "lucide-react";
 
 interface ProfileFormProps {
   user: {
@@ -29,6 +22,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
+    if (name.trim() === (user.name ?? "")) return;
     setSaving(true);
     setSaved(false);
 
@@ -38,10 +32,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-
       if (!res.ok) throw new Error("Failed to save");
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error(err);
     } finally {
@@ -49,75 +42,96 @@ export function ProfileForm({ user }: ProfileFormProps) {
     }
   };
 
+  const unchanged = name.trim() === (user.name ?? "");
+
   return (
-    <div className="space-y-6">
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <CardTitle className="text-base">Profile</CardTitle>
-          <CardDescription>
-            Update your display name and manage your account
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* avatar */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarImage src={user.imageUrl ?? ""} />
-              <AvatarFallback className="text-lg">
-                {user.name?.[0] ?? user.email[0].toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-sm font-medium">
-                {user.name ?? "No name set"}
-              </p>
-              <p className="text-xs text-muted-foreground">{user.email}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Profile photo managed via your Clerk account
-              </p>
-            </div>
-          </div>
+    <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+      {/* avatar row */}
+      <div className="flex items-center gap-5">
+        <Avatar className="h-14 w-14 ring-2 ring-border ring-offset-2 ring-offset-background">
+          <AvatarImage src={user.imageUrl ?? ""} />
+          <AvatarFallback className="text-base font-medium bg-primary/10 text-primary">
+            {user.name?.[0]?.toUpperCase() ??
+              user.email[0].toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {user.name ?? user.email}
+          </p>
+          <p className="truncate text-xs text-muted-foreground mt-0.5">
+            {user.email}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Photo managed via your{" "}
+            <span className="text-primary">Clerk account</span>
+          </p>
+        </div>
+      </div>
 
-          <Separator />
+      {/* divider */}
+      <div className="border-t border-border" />
 
-          {/* name field */}
-          <div className="space-y-2">
-            <Label htmlFor="name">Display name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              className="max-w-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              This is shown on your videos and comments
-            </p>
-          </div>
-
-          {/* email — read only */}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              value={user.email}
-              disabled
-              className="max-w-sm opacity-60"
-            />
-            <p className="text-xs text-muted-foreground">
-              Managed via your Clerk account — change it there
-            </p>
-          </div>
-
-          <Button
-            onClick={handleSave}
-            disabled={saving || name === user.name}
-            size="sm"
+      {/* fields */}
+      <div className="space-y-5">
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="name"
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
           >
-            {saving ? "Saving..." : saved ? "Saved ✓" : "Save changes"}
-          </Button>
-        </CardContent>
-      </Card>
+            Display name
+          </Label>
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            className="bg-background"
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          />
+          <p className="text-xs text-muted-foreground">
+            Shown on your videos and comments
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="email"
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+          >
+            Email address
+          </Label>
+          <Input
+            id="email"
+            value={user.email}
+            disabled
+            className="bg-background opacity-50 cursor-not-allowed"
+          />
+          <p className="text-xs text-muted-foreground">
+            Change your email via your Clerk account settings
+          </p>
+        </div>
+      </div>
+
+      {/* footer */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-2 text-xs text-primary">
+          {saved && (
+            <>
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Changes saved
+            </>
+          )}
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={saving || unchanged}
+          size="sm"
+          className="min-w-[100px]"
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </Button>
+      </div>
     </div>
   );
 }
