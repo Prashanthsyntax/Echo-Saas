@@ -11,6 +11,10 @@ npm run dev
 
 ```
 
+### End to End Pipeline
+
+![alt text](images/echo_roadmap.png)
+
 Open Prisma Studio:
 
 ```bash
