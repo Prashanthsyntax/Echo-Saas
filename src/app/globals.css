@@ -155,3 +155,25 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
+
+
+/* React Flow dark mode overrides */
+.react-flow__controls button {
+  background-color: hsl(240 8% 9%) !important;
+  border-color: hsl(240 6% 18%) !important;
+  color: hsl(240 5% 65%) !important;
+}
+.react-flow__controls button:hover {
+  background-color: hsl(240 6% 14%) !important;
+  color: hsl(240 5% 96%) !important;
+}
+.react-flow__edge-path {
+  stroke: hsl(263 70% 58%) !important;
+  stroke-width: 2 !important;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: hsl(199 89% 55%) !important;
+}
+.react-flow__attribution {
+  display: none !important;
+}

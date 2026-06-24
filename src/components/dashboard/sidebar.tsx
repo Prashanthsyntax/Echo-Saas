@@ -4,12 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { LayoutGrid, Video, PenTool, Settings, CreditCard, Plus } from "lucide-react";
+import {
+  LayoutGrid,
+  Video,
+  PenTool,
+  Workflow,
+  Settings,
+  CreditCard,
+  Plus,
+} from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Library", icon: LayoutGrid },
   { href: "/record", label: "Record", icon: Video },
   { href: "/canvas", label: "Canvas", icon: PenTool },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
