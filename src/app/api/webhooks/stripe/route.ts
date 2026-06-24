@@ -3,6 +3,14 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 
+function getPeriodEnd(subscription: Record<string, unknown>): Date | null {
+  // handles both old API (current_period_end) and new API (billing_cycle_anchor)
+  const raw =
+    (subscription["current_period_end"] as number | undefined) ??
+    (subscription["billing_cycle_anchor"] as number | undefined);
+  return raw ? new Date(raw * 1000) : null;
+}
+
 export async function POST(req: Request) {
   const body = await req.text();
   const headersList = await headers();
@@ -44,8 +52,11 @@ export async function POST(req: Request) {
 
         if (!workspaceId || !subscriptionId) break;
 
-        const subscription =
-          await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = await stripe.subscriptions.retrieve(
+          subscriptionId
+        );
+        const subRaw = subscription as unknown as Record<string, unknown>;
+        const periodEnd = getPeriodEnd(subRaw);
 
         await db.subscription.upsert({
           where: { workspaceId },
@@ -53,18 +64,14 @@ export async function POST(req: Request) {
             stripeSubscriptionId: subscriptionId,
             status: subscription.status,
             plan: "PRO",
-            currentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
-            ),
+            currentPeriodEnd: periodEnd,
           },
           create: {
             workspaceId,
             stripeSubscriptionId: subscriptionId,
             status: subscription.status,
             plan: "PRO",
-            currentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
-            ),
+            currentPeriodEnd: periodEnd,
           },
         });
 
@@ -87,13 +94,14 @@ export async function POST(req: Request) {
 
         if (!existing) break;
 
+        const subRaw = subscription as unknown as Record<string, unknown>;
+        const periodEnd = getPeriodEnd(subRaw);
+
         await db.subscription.update({
           where: { stripeSubscriptionId: subscription.id },
           data: {
             status: subscription.status,
-            currentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
-            ),
+            currentPeriodEnd: periodEnd,
           },
         });
         break;
@@ -119,7 +127,10 @@ export async function POST(req: Request) {
           data: { plan: "FREE" },
         });
 
-        console.log("Subscription canceled for workspace:", existing.workspaceId);
+        console.log(
+          "Subscription canceled for workspace:",
+          existing.workspaceId
+        );
         break;
       }
 

@@ -10,10 +10,12 @@ export const groq = new Groq({
 
 export async function transcribeAudio(
   audioBuffer: Buffer,
-  filename: string
+  filename: string,
 ): Promise<string> {
   // Groq's transcription API accepts a File-like object
-  const file = new File([audioBuffer], filename, { type: "audio/webm" });
+  const file = new File([new Uint8Array(audioBuffer)], filename, {
+    type: "audio/webm",
+  });
 
   const transcription = await groq.audio.transcriptions.create({
     file,
@@ -27,7 +29,7 @@ export async function transcribeAudio(
 
 export async function generateVideoSummary(
   transcript: string,
-  duration: number | null
+  duration: number | null,
 ): Promise<{ title: string; summary: string }> {
   const durationText = duration
     ? `${Math.floor(duration / 60)}m ${duration % 60}s`

@@ -23,14 +23,17 @@ export default function RootLayout({
   return (
     <ClerkProvider
       appearance={{
-        baseTheme: undefined,
         variables: {
-          colorPrimary: "hsl(263 70% 58%)",
-          colorBackground: "hsl(240 8% 9%)",
-          colorText: "hsl(240 5% 96%)",
-          colorInputBackground: "hsl(240 6% 14%)",
-          colorInputText: "hsl(240 5% 96%)",
+          colorPrimary: "hsl(263, 70%, 58%)",
+          colorBackground: "hsl(240, 8%, 9%)",
           borderRadius: "0.625rem",
+          fontFamily: "inherit",
+        },
+        elements: {
+          card: "bg-zinc-900 text-white border border-zinc-800",
+          formFieldInput: "bg-zinc-800 text-white border-zinc-700",
+          footerActionLink: "text-violet-400",
+          formButtonPrimary: "bg-violet-600 hover:bg-violet-500",
         },
       }}
     >
