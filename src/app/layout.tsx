@@ -17,7 +17,7 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Echo • ARK Groups",
+  title: "Echo • AI",
   description:
     "Record your screen, share an instant link, and let your team watch on their own time. No meetings required.",
 };
