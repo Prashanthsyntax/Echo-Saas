@@ -94,9 +94,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         try {
           data = await res.json();
         } catch {
-          throw new Error(
-            `Server error (${res.status}) — check terminal logs`,
-          );
+          throw new Error(`Server error (${res.status}) — check terminal logs`);
         }
 
         if (!res.ok) {
@@ -144,18 +142,54 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
     try {
       let stream: MediaStream;
+      const isElectron = typeof window !== "undefined" && !!window.electron;
 
-      if (mode === "screen") {
+      if (isElectron && mode === "screen") {
+        // use Electron's desktopCapturer for native screen access
+        const granted = await window.electron!.requestScreenPermission();
+        if (!granted) {
+          handleError(
+            "Screen recording permission denied — grant it in System Preferences",
+          );
+          return;
+        }
+
+        const sources = await window.electron!.getSources();
+        const screenSource =
+          sources.find((s) => s.name === "Entire Screen") ?? sources[0];
+
+        if (!screenSource) {
+          handleError("No screen sources found");
+          return;
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            // @ts-expect-error — Electron-specific constraint
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: screenSource.id,
+            },
+          },
+        });
+      } else if (mode === "screen") {
+        // browser fallback
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: 30 },
           audio: true,
         });
       } else if (mode === "camera") {
+        if (isElectron) {
+          await window.electron!.requestCameraPermission();
+          await window.electron!.requestMicPermission();
+        }
         stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
         });
       } else {
+        // both
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: 30 },
           audio: true,
@@ -164,11 +198,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           video: true,
           audio: true,
         });
-        const tracks = [
+        stream = new MediaStream([
           ...screenStream.getTracks(),
           ...cameraStream.getAudioTracks(),
-        ];
-        stream = new MediaStream(tracks);
+        ]);
       }
 
       streamRef.current = stream;
@@ -267,7 +300,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 // ─── helpers (module-level, outside the hook) ────────────────────────────────
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const m = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }

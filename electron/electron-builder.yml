@@ -1,0 +1,40 @@
+appId: com.echo.app
+productName: Echo
+copyright: Copyright © 2026 Echo
+
+directories:
+  output: dist-electron
+  buildResources: electron/assets
+
+files:
+  - .electron/**/*
+  - electron/assets/**/*
+  - package.json
+
+extraResources:
+  - from: electron/assets
+    to: assets
+
+win:
+  icon: electron/assets/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+
+mac:
+  icon: electron/assets/icon.icns
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+
+linux:
+  icon: electron/assets/icon.png
+  target:
+    - target: AppImage
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: electron/assets/icon.ico
+  uninstallerIcon: electron/assets/icon.ico
