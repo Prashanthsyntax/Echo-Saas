@@ -28,3 +28,5 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
 ![alt text](images/stripe_payment_done.png)
+
+### Features
