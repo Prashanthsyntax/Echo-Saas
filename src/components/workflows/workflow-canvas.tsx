@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useCallback, useRef, useState } from "react";
@@ -10,8 +11,11 @@ import {
   useNodesState,
   useEdgesState,
   type Connection,
-  type Edge,
   type Node,
+  type Edge,
+  type NodeChange,
+  type EdgeChange,
+  type OnConnect,
   BackgroundVariant,
   Panel,
 } from "@xyflow/react";
@@ -21,13 +25,11 @@ import { NodePalette } from "./node-palette";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Play,
-  Save,
-  Trash2,
-  LayoutTemplate,
-  X,
-} from "lucide-react";
-import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from "./workflow-types";
+  WORKFLOW_TEMPLATES,
+  type WorkflowTemplate,
+  type WorkflowNodeData,
+} from "./workflow-types";
+import { Play, Save, Trash2, LayoutTemplate, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nodeTypes = { workflowNode: WorkflowNode };
@@ -36,8 +38,8 @@ let nodeId = 10;
 const getNodeId = () => `node_${nodeId++}`;
 
 export function WorkflowCanvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [workflowName, setWorkflowName] = useState("Untitled workflow");
   const [isRunning, setIsRunning] = useState(false);
   const [runLog, setRunLog] = useState<string[]>([]);
@@ -46,12 +48,12 @@ export function WorkflowCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
-  const onConnect = useCallback(
+  const onConnect: OnConnect = useCallback(
     (params: Connection) =>
       setEdges((eds) =>
-        addEdge({ ...params, type: "smoothstep", animated: true }, eds)
+        addEdge({ ...params, type: "smoothstep", animated: true }, eds),
       ),
-    [setEdges]
+    [setEdges],
   );
 
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -83,15 +85,12 @@ export function WorkflowCanvas() {
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [reactFlowInstance, setNodes]
+    [reactFlowInstance, setNodes],
   );
 
   const handleSave = () => {
     const workflow = { name: workflowName, nodes, edges };
-    localStorage.setItem(
-      `workflow_${Date.now()}`,
-      JSON.stringify(workflow)
-    );
+    localStorage.setItem(`workflow_${Date.now()}`, JSON.stringify(workflow));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -102,20 +101,17 @@ export function WorkflowCanvas() {
     setRunLog([]);
 
     const triggerNodes = nodes.filter(
-      (n) => (n.data as any).nodeType === "trigger"
+      (n) => (n.data as any).nodeType === "trigger",
     );
     const actionNodes = nodes.filter(
-      (n) => (n.data as any).nodeType !== "trigger"
+      (n) => (n.data as any).nodeType !== "trigger",
     );
 
     setRunLog([`▶ Starting workflow: ${workflowName}`]);
     await delay(500);
 
     for (const node of triggerNodes) {
-      setRunLog((prev) => [
-        ...prev,
-        `🔵 Trigger: ${(node.data as any).label}`,
-      ]);
+      setRunLog((prev) => [...prev, `🔵 Trigger: ${(node.data as any).label}`]);
       await delay(600);
     }
 
@@ -257,9 +253,9 @@ export function WorkflowCanvas() {
                     Build your first workflow
                   </p>
                   <p className="max-w-xs text-xs text-muted-foreground">
-                    Drag nodes from the left panel onto the canvas, then
-                    connect them by drawing from one handle to another. Or
-                    start with a template.
+                    Drag nodes from the left panel onto the canvas, then connect
+                    them by drawing from one handle to another. Or start with a
+                    template.
                   </p>
                   <Button
                     variant="outline"
@@ -282,9 +278,7 @@ export function WorkflowCanvas() {
             <div className="w-[480px] rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-black/40">
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">
-                    Workflow templates
-                  </h3>
+                  <h3 className="text-sm font-semibold">Workflow templates</h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Start from a pre-built automation
                   </p>

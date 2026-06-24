@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -8,6 +9,7 @@ export function CanvasBoard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const initializingRef = useRef(false); // prevents double-init in Strict Mode
 
   const [activeTool, setActiveTool] = useState<CanvasTool>("select");
   const [zoom, setZoom] = useState(1);
@@ -19,6 +21,8 @@ export function CanvasBoard() {
   const startPoint = useRef({ x: 0, y: 0 });
   const activeShape = useRef<any>(null);
 
+  // use refs for values read inside canvas event handlers
+  // (event handlers close over the initial value, refs always give current)
   const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
   const fillColorRef = useRef(fillColor);
@@ -34,50 +38,37 @@ export function CanvasBoard() {
     if (tool === "select" || tool === "draw") return;
 
     const { Rect, Ellipse, Line, IText, Group } = canvas._fabricClasses;
-    const pointer = canvas.getScenePoint(opt.e);   // ← fixed
+    const pointer = canvas.getScenePoint(opt.e);
     startPoint.current = { x: pointer.x, y: pointer.y };
     isDrawingShape.current = true;
 
     const sc = strokeColorRef.current;
     const fc = fillColorRef.current;
     const sw = strokeWidthRef.current;
-
     let shape: any = null;
 
     if (tool === "rect") {
       shape = new Rect({
-        left: pointer.x,
-        top: pointer.y,
-        width: 0,
-        height: 0,
-        stroke: sc,
-        fill: fc === "transparent" ? "" : fc,
-        strokeWidth: sw,
-        selectable: false,
+        left: pointer.x, top: pointer.y,
+        width: 0, height: 0,
+        stroke: sc, fill: fc === "transparent" ? "" : fc,
+        strokeWidth: sw, selectable: false,
       });
     } else if (tool === "circle") {
       shape = new Ellipse({
-        left: pointer.x,
-        top: pointer.y,
-        rx: 0,
-        ry: 0,
-        stroke: sc,
-        fill: fc === "transparent" ? "" : fc,
-        strokeWidth: sw,
-        selectable: false,
+        left: pointer.x, top: pointer.y,
+        rx: 0, ry: 0,
+        stroke: sc, fill: fc === "transparent" ? "" : fc,
+        strokeWidth: sw, selectable: false,
       });
     } else if (tool === "line") {
       shape = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-        stroke: sc,
-        strokeWidth: sw,
-        selectable: false,
+        stroke: sc, strokeWidth: sw, selectable: false,
       });
     } else if (tool === "text") {
       const text = new IText("Click to edit", {
-        left: pointer.x,
-        top: pointer.y,
-        fill: sc,
-        fontSize: 18,
+        left: pointer.x, top: pointer.y,
+        fill: sc, fontSize: 18,
         fontFamily: "ui-sans-serif, system-ui, sans-serif",
       });
       canvas.add(text);
@@ -88,23 +79,17 @@ export function CanvasBoard() {
       return;
     } else if (tool === "sticky") {
       const bg = new Rect({
-        width: 180,
-        height: 140,
-        fill: "#FDE68A",
-        rx: 8,
-        ry: 8,
+        width: 180, height: 140,
+        fill: "#FDE68A", rx: 8, ry: 8,
       });
       const label = new IText("Sticky note", {
-        left: 12,
-        top: 12,
-        fill: "#1C1917",
-        fontSize: 14,
+        left: 12, top: 12,
+        fill: "#1C1917", fontSize: 14,
         fontFamily: "ui-sans-serif, system-ui, sans-serif",
         width: 156,
       });
       const group = new Group([bg, label], {
-        left: pointer.x,
-        top: pointer.y,
+        left: pointer.x, top: pointer.y,
       });
       canvas.add(group);
       setActiveTool("select");
@@ -120,28 +105,22 @@ export function CanvasBoard() {
 
   const handleMouseMove = useCallback((opt: any, canvas: any) => {
     if (!isDrawingShape.current || !activeShape.current) return;
-
     const tool = activeToolRef.current;
-    const pointer = canvas.getScenePoint(opt.e);   // ← fixed
+    const pointer = canvas.getScenePoint(opt.e);
     const shape = activeShape.current;
     const sx = startPoint.current.x;
     const sy = startPoint.current.y;
 
     if (tool === "rect") {
       shape.set({
-        left: Math.min(sx, pointer.x),
-        top: Math.min(sy, pointer.y),
-        width: Math.abs(pointer.x - sx),
-        height: Math.abs(pointer.y - sy),
+        left: Math.min(sx, pointer.x), top: Math.min(sy, pointer.y),
+        width: Math.abs(pointer.x - sx), height: Math.abs(pointer.y - sy),
       });
     } else if (tool === "circle") {
-      const rx = Math.abs(pointer.x - sx) / 2;
-      const ry = Math.abs(pointer.y - sy) / 2;
       shape.set({
-        left: Math.min(sx, pointer.x),
-        top: Math.min(sy, pointer.y),
-        rx,
-        ry,
+        left: Math.min(sx, pointer.x), top: Math.min(sy, pointer.y),
+        rx: Math.abs(pointer.x - sx) / 2,
+        ry: Math.abs(pointer.y - sy) / 2,
       });
     } else if (tool === "line") {
       shape.set({ x2: pointer.x, y2: pointer.y });
@@ -153,29 +132,35 @@ export function CanvasBoard() {
   const handleMouseUp = useCallback((canvas: any) => {
     if (!isDrawingShape.current) return;
     isDrawingShape.current = false;
-
     if (activeShape.current) {
       activeShape.current.set({ selectable: true });
       canvas.setActiveObject(activeShape.current);
       activeShape.current = null;
     }
-
     setActiveTool("select");
   }, []);
 
-  // initialize Fabric.js
   useEffect(() => {
-    if (!canvasRef.current || fabricRef.current) return;
+    // prevent double-initialization from React 18 Strict Mode
+    if (initializingRef.current) return;
+    initializingRef.current = true;
 
-    let cleanup: (() => void) | undefined;
+    let canvas: any = null;
+    let ro: ResizeObserver | null = null;
 
     import("fabric").then((fabricModule) => {
       const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } = fabricModule;
-
       const container = containerRef.current;
-      if (!container || !canvasRef.current) return;
+      const canvasEl = canvasRef.current;
+      if (!container || !canvasEl) return;
 
-      const canvas = new Canvas(canvasRef.current, {
+      // if Fabric already initialized this element (Strict Mode second run),
+      // clear the internal flag so we can reinitialize cleanly
+      if ((canvasEl as any).__fabric) {
+        delete (canvasEl as any).__fabric;
+      }
+
+      canvas = new Canvas(canvasEl, {
         width: container.clientWidth,
         height: container.clientHeight,
         backgroundColor: "#0A0A0F",
@@ -183,6 +168,7 @@ export function CanvasBoard() {
         renderOnAddRemove: true,
       });
 
+      // attach class references so event handlers can access them
       canvas._fabricClasses = { Rect, Ellipse, Line, IText, Group };
       fabricRef.current = canvas;
 
@@ -236,7 +222,7 @@ export function CanvasBoard() {
         opt.e.stopPropagation();
       });
 
-      const ro = new ResizeObserver(() => {
+      ro = new ResizeObserver(() => {
         if (!container || !canvas) return;
         canvas.setDimensions({
           width: container.clientWidth,
@@ -244,47 +230,37 @@ export function CanvasBoard() {
         });
       });
       ro.observe(container);
-
-      cleanup = () => {
-        ro.disconnect();
-        canvas.dispose();
-        fabricRef.current = null;
-      };
     });
 
-    return () => cleanup?.();
+    return () => {
+      ro?.disconnect();
+      if (canvas) {
+        try { canvas.dispose(); } catch {}
+      }
+      fabricRef.current = null;
+      initializingRef.current = false;
+    };
   }, [handleMouseDown, handleMouseMove, handleMouseUp]);
 
-  // update tool / brush when state changes
+  // sync tool + brush when state changes
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-
     canvas.isDrawingMode = activeTool === "draw";
-
     if (activeTool === "draw" && canvas.freeDrawingBrush) {
       canvas.freeDrawingBrush.color = strokeColor;
       canvas.freeDrawingBrush.width = strokeWidth;
     }
-
     canvas.selection = activeTool === "select";
     canvas.forEachObject((obj: any) => {
       obj.selectable = activeTool === "select";
     });
   }, [activeTool, strokeColor, strokeWidth]);
 
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas || activeTool !== "draw" || !canvas.freeDrawingBrush) return;
-    canvas.freeDrawingBrush.color = strokeColor;
-    canvas.freeDrawingBrush.width = strokeWidth;
-  }, [strokeColor, strokeWidth, activeTool]);
-
   const handleDelete = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const active = canvas.getActiveObjects();
-    active.forEach((obj: any) => canvas.remove(obj));
+    canvas.getActiveObjects().forEach((obj: any) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.requestRenderAll();
   }, []);
@@ -293,10 +269,10 @@ export function CanvasBoard() {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const dataURL = canvas.toDataURL({ format: "png", multiplier: 2 });
-    const link = document.createElement("a");
-    link.href = dataURL;
-    link.download = `echo-canvas-${Date.now()}.png`;
-    link.click();
+    const a = document.createElement("a");
+    a.href = dataURL;
+    a.download = `echo-canvas-${Date.now()}.png`;
+    a.click();
   }, []);
 
   const handleZoomIn = useCallback(() => {
@@ -325,7 +301,10 @@ export function CanvasBoard() {
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) return;
       const map: Record<string, CanvasTool> = {
         v: "select", d: "draw", r: "rect",
         c: "circle", l: "line", t: "text", s: "sticky",

@@ -25,7 +25,7 @@ const nodeTypeBadge: Record<string, string> = {
 };
 
 export const WorkflowNode = memo(({ data, selected }: NodeProps) => {
-  const nodeData = data as WorkflowNodeData;
+  const nodeData = data as unknown as WorkflowNodeData;
   const [showConfig, setShowConfig] = useState(false);
 
   return (

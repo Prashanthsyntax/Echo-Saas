@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type NodeType = "trigger" | "action" | "condition" | "output";
 
 export interface WorkflowNodeData {
