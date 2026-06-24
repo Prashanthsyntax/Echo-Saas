@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Echo — Async video messaging for teams",
+  title: "Echo • ARK Groups",
   description:
     "Record your screen, share an instant link, and let your team watch on their own time. No meetings required.",
 };
