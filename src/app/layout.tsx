@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Chatbot } from "@/components/shared/chatbot";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: [
+    { path: "../../public/fonts/Inter-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../../public/fonts/Inter-Medium.ttf", weight: "500", style: "normal" },
+    { path: "../../public/fonts/Inter-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../../public/fonts/Inter-Bold.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-sans",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -40,6 +47,7 @@ export default function RootLayout({
       <html lang="en" className={cn("dark", inter.variable)}>
         <body className="bg-background text-foreground antialiased font-sans">
           {children}
+          <Chatbot />
         </body>
       </html>
     </ClerkProvider>
