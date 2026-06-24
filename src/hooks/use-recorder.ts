@@ -32,8 +32,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const durationRef = useRef<number>(0);
 
-  // Format seconds → "MM:SS"
   const formattedDuration = formatDuration(duration);
 
   const stopTimer = useCallback(() => {
@@ -44,9 +44,11 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, []);
 
   const startTimer = useCallback(() => {
+    durationRef.current = 0;
     setDuration(0);
     timerRef.current = setInterval(() => {
-      setDuration((d) => d + 1);
+      durationRef.current += 1;
+      setDuration(durationRef.current);
     }, 1000);
   }, []);
 
@@ -66,6 +68,65 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     [options, stopTimer, stopAllTracks],
   );
 
+  const uploadVideo = useCallback(
+    async (blob: Blob, mimeType: string, recordedDuration: number) => {
+      setStatus("uploading");
+
+      try {
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+        const filename = `recording-${Date.now()}.${ext}`;
+
+        // convert blob to base64
+        const base64 = await blobToBase64(blob);
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename,
+            contentType: mimeType,
+            fileData: base64,
+            duration: recordedDuration,
+          }),
+        });
+
+        let data: { videoId?: string; error?: string } = {};
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error(
+            `Server error (${res.status}) — check terminal logs`,
+          );
+        }
+
+        if (!res.ok) {
+          throw new Error(
+            data.error ?? `Upload failed with status ${res.status}`,
+          );
+        }
+
+        if (!data.videoId) {
+          throw new Error("No video ID returned from server");
+        }
+
+        setVideoId(data.videoId);
+        setStatus("done");
+        options.onUploadComplete?.(data.videoId);
+
+        // fire transcription in background — don't block the redirect
+        fetch(`/api/videos/${data.videoId}/transcribe`, {
+          method: "POST",
+        }).catch((err) => {
+          console.warn("Background transcription request failed:", err);
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        handleError(msg);
+      }
+    },
+    [options, handleError],
+  );
+
   const stopRecording = useCallback(() => {
     if (
       mediaRecorderRef.current &&
@@ -76,44 +137,6 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     }
     stopAllTracks();
   }, [stopAllTracks]);
-
-  const uploadVideo = useCallback(
-    async (blob: Blob, mimeType: string) => {
-      setStatus("uploading");
-
-      try {
-        if (blob.size === 0) {
-          throw new Error("Recording is empty. Please try recording again.");
-        }
-
-        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
-        const filename = `recording-${Date.now()}.${ext}`;
-        const formData = new FormData();
-        formData.append("file", blob, filename);
-        formData.append("contentType", mimeType);
-
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error ?? "Upload failed");
-        }
-
-        const { videoId: newVideoId } = await res.json();
-
-        setVideoId(newVideoId);
-        setStatus("done");
-        options.onUploadComplete?.(newVideoId);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Upload failed";
-        handleError(msg);
-      }
-    },
-    [handleError, options],
-  );
 
   const requestPermissions = useCallback(async () => {
     setStatus("requesting");
@@ -133,7 +156,6 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           audio: true,
         });
       } else {
-        // both: composite screen + camera tracks
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: 30 },
           audio: true,
@@ -151,12 +173,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
       streamRef.current = stream;
 
-      // attach to preview element if available
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream;
       }
 
-      // stop recording if user ends screen share natively
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         stopRecording();
       });
@@ -187,11 +207,12 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
     recorder.onstop = async () => {
       stopTimer();
+      const finalDuration = durationRef.current;
       const blob = new Blob(chunksRef.current, { type: mimeType });
-      await uploadVideo(blob, mimeType);
+      await uploadVideo(blob, mimeType, finalDuration);
     };
 
-    recorder.start(1000); // collect a chunk every second
+    recorder.start(1000);
     mediaRecorderRef.current = recorder;
     startTimer();
     setStatus("recording");
@@ -218,6 +239,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     stopAllTracks();
     chunksRef.current = [];
     mediaRecorderRef.current = null;
+    durationRef.current = 0;
     setStatus("idle");
     setDuration(0);
     setError(null);
@@ -242,10 +264,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   };
 }
 
+// ─── helpers (module-level, outside the hook) ────────────────────────────────
+
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
@@ -262,4 +284,13 @@ function getSupportedMimeType(): string {
     if (MediaRecorder.isTypeSupported(type)) return type;
   }
   return "video/webm";
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

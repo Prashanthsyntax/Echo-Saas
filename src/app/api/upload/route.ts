@@ -9,24 +9,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const formData = await req.formData();
-  const file = formData.get("file");
-  const contentType = String(formData.get("contentType") ?? "");
+  const { filename, contentType, fileData, duration } = await req.json();
 
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Missing uploaded file" }, { status: 400 });
-  }
-
-  if (!contentType.startsWith("video/")) {
+  if (!filename || !contentType || !fileData) {
     return NextResponse.json(
-      { error: "Missing or invalid video content type" },
+      { error: "Missing filename, contentType, or fileData" },
       { status: 400 }
     );
   }
 
-  if (file.size < 1024) {
+  if (!contentType.startsWith("video/")) {
     return NextResponse.json(
-      { error: "Recording is too small to upload" },
+      { error: "Invalid content type — must be a video" },
       { status: 400 }
     );
   }
@@ -36,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // find or create user row - resilient to webhook not having fired yet
+  // find or create user — resilient to webhook not having fired yet
   let user = await db.user.findUnique({ where: { clerkId: userId } });
 
   if (!user) {
@@ -61,6 +55,7 @@ export async function POST(req: Request) {
     console.log("Created user inline (webhook fallback):", user.id);
   }
 
+  // find or create default workspace
   let workspace = await db.workspace.findFirst({
     where: { memberships: { some: { userId: user.id } } },
   });
@@ -77,6 +72,7 @@ export async function POST(req: Request) {
     console.log("Created workspace inline:", workspace.id);
   }
 
+  // create video row with UPLOADING status
   const video = await db.video.create({
     data: {
       title: "Untitled Video",
@@ -86,10 +82,24 @@ export async function POST(req: Request) {
     },
   });
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const filename = file.name || `recording-${Date.now()}.webm`;
+  // convert base64 to buffer
+  const base64 = fileData.split(",")[1] ?? fileData;
+  const buffer = Buffer.from(base64, "base64");
+
+  if (buffer.length < 1024) {
+    await db.video.update({
+      where: { id: video.id },
+      data: { status: "FAILED" },
+    });
+    return NextResponse.json(
+      { error: "Recording is too small to upload" },
+      { status: 400 }
+    );
+  }
+
   const path = `${video.id}/${filename}`;
 
+  // upload to Supabase storage
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(path, buffer, {
@@ -111,15 +121,17 @@ export async function POST(req: Request) {
 
   const publicUrl = getPublicUrl(path);
 
+  // mark video as READY with duration
   await db.video.update({
     where: { id: video.id },
     data: {
       status: "READY",
       url: publicUrl,
+      duration: typeof duration === "number" ? duration : null,
     },
   });
 
-  console.log("Video uploaded:", video.id, publicUrl);
+  console.log("✅ Video uploaded:", video.id, publicUrl);
 
   return NextResponse.json({ videoId: video.id, publicUrl });
 }

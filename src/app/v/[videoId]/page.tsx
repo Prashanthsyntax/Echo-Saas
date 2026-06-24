@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { VideoTitle } from "@/components/shared/video-title";
 import { VideoPlayer } from "@/components/shared/video-player";
+import { TranscriptPoller } from "@/components/shared/transcript-poller";
 import { CommentsSection } from "@/components/shared/comments-section";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -102,25 +103,12 @@ export default async function VideoPage({ params }: VideoPageProps) {
             </div>
 
             {/* AI transcript/summary — shown only when available */}
-            {video.summary && (
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  AI Summary
-                </p>
-                <p className="text-sm leading-relaxed">{video.summary}</p>
-              </div>
-            )}
-
-            {video.transcript && (
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Transcript
-                </p>
-                <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                  {video.transcript}
-                </p>
-              </div>
-            )}
+            <TranscriptPoller
+              videoId={videoId}
+              initialTranscript={video.transcript}
+              initialSummary={video.summary}
+              initialTitle={video.title}
+            />
           </div>
 
           {/* right: comments */}
