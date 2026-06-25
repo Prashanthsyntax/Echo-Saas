@@ -1,8 +1,13 @@
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Settings" };
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { ProfileForm } from "@/components/dashboard/profile-form";
 import { WorkspaceForm } from "@/components/dashboard/workspace-form";
+
+
+
 
 export default async function SettingsPage() {
   const { userId } = await auth();

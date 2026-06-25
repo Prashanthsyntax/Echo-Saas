@@ -6,6 +6,7 @@ import { KnowledgeGraphView } from "@/components/knowledge/knowledge-graph";
 import type { KnowledgeGraph } from "@/components/knowledge/knowledge-types";
 import { graphStore } from "@/lib/graph-store";
 
+
 export default function KnowledgePage() {
   const [graph, setGraph] = useState<KnowledgeGraph | null>(null);
 

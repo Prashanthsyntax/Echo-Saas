@@ -17,9 +17,32 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Echo • AI",
+  title: {
+    default: "Echo — Async video messaging for teams",
+    template: "%s | Echo",
+  },
   description:
     "Record your screen, share an instant link, and let your team watch on their own time. No meetings required.",
+  keywords: [
+    "async video",
+    "screen recording",
+    "video messaging",
+    "loom alternative",
+    "team collaboration",
+  ],
+  openGraph: {
+    type: "website",
+    title: "Echo — Async video messaging for teams",
+    description:
+      "Record your screen, share an instant link, and let your team watch on their own time.",
+    siteName: "Echo",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Echo — Async video messaging for teams",
+    description:
+      "Record your screen, share an instant link, and let your team watch on their own time.",
+  },
 };
 
 export default function RootLayout({
