@@ -1,8 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { Metadata } from "next";
-export const metadata: Metadata = { title: "Ask Chat" };
 import { useState, useRef, useEffect } from "react";
 import { graphStore } from "@/lib/graph-store";
 import type { KnowledgeGraph } from "@/components/knowledge/knowledge-types";

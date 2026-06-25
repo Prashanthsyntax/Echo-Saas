@@ -1,5 +1,3 @@
-import { Metadata } from "next";
-export const metadata: Metadata = { title: "Workflows" };
 import { WorkflowCanvas } from "@/components/workflows/workflow-canvas";
 
 
