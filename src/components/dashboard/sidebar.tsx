@@ -9,6 +9,7 @@ import {
   Video,
   PenTool,
   Workflow,
+  Network,
   Settings,
   CreditCard,
   Plus,
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/record", label: "Record", icon: Video },
   { href: "/canvas", label: "Canvas", icon: PenTool },
   { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/knowledge", label: "Knowledge", icon: Network },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
