@@ -10,6 +10,7 @@ import {
   PenTool,
   Workflow,
   Network,
+  MessageSquare,
   Settings,
   CreditCard,
   Plus,
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/canvas", label: "Canvas", icon: PenTool },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/knowledge", label: "Knowledge", icon: Network },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];

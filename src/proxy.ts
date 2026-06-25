@@ -6,6 +6,7 @@ const isProtectedRoute = createRouteMatcher([
   "/canvas(.*)",
   "/workflows(.*)",
   "/knowledge(.*)",
+  "/chat(.*)",
   "/settings(.*)",
   "/billing(.*)",
 ]);
