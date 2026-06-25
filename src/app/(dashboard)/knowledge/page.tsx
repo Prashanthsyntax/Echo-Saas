@@ -6,6 +6,9 @@ import { KnowledgeGraphView } from "@/components/knowledge/knowledge-graph";
 import type { KnowledgeGraph } from "@/components/knowledge/knowledge-types";
 import { graphStore } from "@/lib/graph-store";
 
+import { Metadata } from "next";
+export const metadata: Metadata = { title: "Knowledge Graph" };
+
 export default function KnowledgePage() {
   const [graph, setGraph] = useState<KnowledgeGraph | null>(null);
 
