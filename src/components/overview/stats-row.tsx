@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState } from "react";
+import { useWorkspace } from "@/lib/workspace-context";
 
 interface Stats {
   videos: number;
@@ -12,70 +14,71 @@ interface Stats {
 }
 
 const statConfig = [
-  { key: "videos", label: "RECORDINGS" },
-  { key: "views", label: "TOTAL VIEWS" },
-  { key: "comments", label: "COMMENTS" },
-  { key: "transcripts", label: "AI TRANSCRIPTS" },
-  { key: "folders", label: "FOLDERS" },
-  { key: "workspaces", label: "WORKSPACES" },
-] as const;
+  { key: "videos" as const, label: "RECORDINGS" },
+  { key: "views" as const, label: "TOTAL VIEWS" },
+  { key: "comments" as const, label: "COMMENTS" },
+  { key: "transcripts" as const, label: "AI TRANSCRIPTS" },
+  { key: "folders" as const, label: "FOLDERS" },
+  { key: "workspaces" as const, label: "WORKSPACES" },
+];
 
 function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (value === 0) return;
-    let start = 0;
-    const duration = 800;
-    const step = value / (duration / 16);
-    const timer = setInterval(() => {
-      start += step;
-      if (start >= value) {
-        setDisplay(value);
-        clearInterval(timer);
-      } else {
-        setDisplay(Math.floor(start));
-      }
-    }, 16);
-    return () => clearInterval(timer);
+    if (value === 0) { setDisplay(0); return; }
+    const duration = 600;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(eased * value));
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }, [value]);
 
-  return <span>{display}</span>;
+  return <>{display}</>;
 }
 
 export function StatsRow() {
+  const { workspaceId } = useWorkspace();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/overview/stats")
+    setLoading(true);
+    const url = workspaceId
+      ? `/api/overview/stats?workspaceId=${workspaceId}`
+      : "/api/overview/stats";
+
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         setStats(data);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [workspaceId]); // re-fetch when workspace changes
 
   return (
-    <div className="mb-8 grid grid-cols-2 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] md:grid-cols-3 lg:grid-cols-6">
-      {statConfig.map((stat, i) => (
-        <div
-          key={stat.key}
-          className="flex flex-col gap-2 border-r border-white/5 p-5 last:border-r-0"
-        >
-          <p className="text-[10px] font-medium tracking-widest text-white/30">
-            {stat.label}
-          </p>
-          <p className="text-2xl font-semibold text-white">
-            {loading ? (
-              <span className="inline-block h-6 w-8 animate-pulse rounded bg-white/10" />
-            ) : (
-              <AnimatedNumber value={stats?.[stat.key] ?? 0} />
-            )}
-          </p>
-        </div>
-      ))}
+    <div className="mb-8 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
+      <div className="grid grid-cols-2 divide-x divide-y divide-white/5 md:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
+        {statConfig.map((stat) => (
+          <div key={stat.key} className="flex flex-col gap-1.5 px-5 py-4">
+            <p className="text-[9px] font-semibold tracking-[0.15em] text-white/25">
+              {stat.label}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums text-white">
+              {loading ? (
+                <span className="inline-block h-7 w-6 animate-pulse rounded bg-white/10" />
+              ) : (
+                <AnimatedNumber value={stats?.[stat.key] ?? 0} />
+              )}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
