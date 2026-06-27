@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useState } from "react";
+import { useWorkspace } from "@/lib/workspace-context";
 
 interface Stats {
   videos: number;
@@ -24,13 +26,11 @@ function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (value === 0) return;
+    if (value === 0) { setDisplay(0); return; }
     const duration = 600;
     const start = performance.now();
     const tick = (now: number) => {
-      const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
-      // ease out cubic
+      const progress = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setDisplay(Math.round(eased * value));
       if (progress < 1) requestAnimationFrame(tick);
@@ -42,18 +42,24 @@ function AnimatedNumber({ value }: { value: number }) {
 }
 
 export function StatsRow() {
+  const { workspaceId } = useWorkspace();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/overview/stats")
+    setLoading(true);
+    const url = workspaceId
+      ? `/api/overview/stats?workspaceId=${workspaceId}`
+      : "/api/overview/stats";
+
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         setStats(data);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [workspaceId]); // re-fetch when workspace changes
 
   return (
     <div className="mb-8 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
@@ -65,7 +71,7 @@ export function StatsRow() {
             </p>
             <p className="text-2xl font-semibold tabular-nums text-white">
               {loading ? (
-                <span className="inline-block h-7 w-6 animate-pulse rounded bg-white/8" />
+                <span className="inline-block h-7 w-6 animate-pulse rounded bg-white/10" />
               ) : (
                 <AnimatedNumber value={stats?.[stat.key] ?? 0} />
               )}

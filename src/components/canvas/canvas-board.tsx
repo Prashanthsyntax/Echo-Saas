@@ -9,7 +9,6 @@ export function CanvasBoard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const initializingRef = useRef(false); // prevents double-init in Strict Mode
 
   const [activeTool, setActiveTool] = useState<CanvasTool>("select");
   const [zoom, setZoom] = useState(1);
@@ -21,8 +20,6 @@ export function CanvasBoard() {
   const startPoint = useRef({ x: 0, y: 0 });
   const activeShape = useRef<any>(null);
 
-  // use refs for values read inside canvas event handlers
-  // (event handlers close over the initial value, refs always give current)
   const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
   const fillColorRef = useRef(fillColor);
@@ -141,23 +138,23 @@ export function CanvasBoard() {
   }, []);
 
   useEffect(() => {
-    // prevent double-initialization from React 18 Strict Mode
-    if (initializingRef.current) return;
-    initializingRef.current = true;
-
     let canvas: any = null;
     let ro: ResizeObserver | null = null;
+    let disposed = false;
 
     import("fabric").then((fabricModule) => {
+      // If the effect already cleaned up before the async import resolved, bail out
+      if (disposed) return;
+
       const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } = fabricModule;
       const container = containerRef.current;
       const canvasEl = canvasRef.current;
       if (!container || !canvasEl) return;
 
-      // if Fabric already initialized this element (Strict Mode second run),
-      // clear the internal flag so we can reinitialize cleanly
-      if ((canvasEl as any).__fabric) {
-        delete (canvasEl as any).__fabric;
+      // Dispose any existing Fabric instance on this element before creating a new one
+      if (fabricRef.current) {
+        try { fabricRef.current.dispose(); } catch {}
+        fabricRef.current = null;
       }
 
       canvas = new Canvas(canvasEl, {
@@ -168,7 +165,6 @@ export function CanvasBoard() {
         renderOnAddRemove: true,
       });
 
-      // attach class references so event handlers can access them
       canvas._fabricClasses = { Rect, Ellipse, Line, IText, Group };
       fabricRef.current = canvas;
 
@@ -233,16 +229,16 @@ export function CanvasBoard() {
     });
 
     return () => {
+      disposed = true;
       ro?.disconnect();
-      if (canvas) {
-        try { canvas.dispose(); } catch {}
+      if (fabricRef.current) {
+        try { fabricRef.current.dispose(); } catch {}
+        fabricRef.current = null;
       }
-      fabricRef.current = null;
-      initializingRef.current = false;
     };
   }, [handleMouseDown, handleMouseMove, handleMouseUp]);
 
-  // sync tool + brush when state changes
+  // Sync tool + brush when state changes
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
