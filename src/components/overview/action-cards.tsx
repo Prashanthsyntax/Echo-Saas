@@ -2,15 +2,26 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import {
+  Video,
+  PenTool,
+  Workflow,
+  Network,
+  MessageSquare,
+  LayoutGrid,
+  CreditCard,
+  Settings,
+} from "lucide-react";
 
 interface ActionCard {
   title: string;
   description: string;
   href: string;
   label: string;
-  emoji: string;
-  gradient: string;
-  comingSoon?: boolean;
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  accentColor: string;
 }
 
 const cards: ActionCard[] = [
@@ -19,101 +30,116 @@ const cards: ActionCard[] = [
     description: "Capture your screen or webcam instantly",
     href: "/record",
     label: "Start recording",
-    emoji: "🎥",
-    gradient: "from-violet-500/20 to-purple-600/10",
+    icon: Video,
+    iconBg: "bg-violet-500/20",
+    iconColor: "text-violet-400",
+    accentColor: "hover:border-violet-500/20",
   },
   {
     title: "Canvas",
-    description: "Design workflows and diagrams visually",
+    description: "Design diagrams and workflows visually",
     href: "/canvas",
     label: "Open canvas",
-    emoji: "🎨",
-    gradient: "from-blue-500/20 to-cyan-600/10",
+    icon: PenTool,
+    iconBg: "bg-cyan-500/20",
+    iconColor: "text-cyan-400",
+    accentColor: "hover:border-cyan-500/20",
   },
   {
     title: "Workflows",
     description: "Build automation flows with drag and drop",
     href: "/workflows",
     label: "Build workflow",
-    emoji: "⚡",
-    gradient: "from-amber-500/20 to-orange-600/10",
+    icon: Workflow,
+    iconBg: "bg-amber-500/20",
+    iconColor: "text-amber-400",
+    accentColor: "hover:border-amber-500/20",
   },
   {
     title: "Knowledge Graph",
     description: "Upload a PDF and extract visual knowledge",
     href: "/knowledge",
     label: "Upload document",
-    emoji: "🧠",
-    gradient: "from-emerald-500/20 to-teal-600/10",
+    icon: Network,
+    iconBg: "bg-emerald-500/20",
+    iconColor: "text-emerald-400",
+    accentColor: "hover:border-emerald-500/20",
   },
   {
     title: "Chat",
     description: "Ask questions about your knowledge graph",
     href: "/chat",
     label: "Open chat",
-    emoji: "💬",
-    gradient: "from-pink-500/20 to-rose-600/10",
+    icon: MessageSquare,
+    iconBg: "bg-pink-500/20",
+    iconColor: "text-pink-400",
+    accentColor: "hover:border-pink-500/20",
   },
   {
     title: "Video Library",
     description: "Browse and manage all your recordings",
     href: "/dashboard",
     label: "View library",
-    emoji: "📚",
-    gradient: "from-indigo-500/20 to-blue-600/10",
+    icon: LayoutGrid,
+    iconBg: "bg-indigo-500/20",
+    iconColor: "text-indigo-400",
+    accentColor: "hover:border-indigo-500/20",
   },
   {
     title: "Billing",
     description: "Upgrade to Pro for unlimited recordings",
     href: "/billing",
     label: "View plans",
-    emoji: "💳",
-    gradient: "from-slate-500/20 to-zinc-600/10",
+    icon: CreditCard,
+    iconBg: "bg-slate-500/20",
+    iconColor: "text-slate-400",
+    accentColor: "hover:border-slate-500/20",
   },
   {
     title: "Settings",
     description: "Manage your profile and workspace",
     href: "/settings",
     label: "Open settings",
-    emoji: "⚙️",
-    gradient: "from-gray-500/20 to-neutral-600/10",
+    icon: Settings,
+    iconBg: "bg-zinc-500/20",
+    iconColor: "text-zinc-400",
+    accentColor: "hover:border-zinc-500/20",
   },
 ];
 
 export function ActionCards() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-white">Get started</h2>
+        <h2 className="text-base font-semibold text-white">Get started</h2>
         <p className="mt-0.5 text-sm text-white/40">
           Everything you need to build your async video workflow
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card) => (
           <Link
             key={card.href}
             href={card.href}
-            className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-5 transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04]"
+            className={cn(
+              "group flex flex-col gap-4 rounded-2xl border border-white/5 bg-white/[0.02] p-5",
+              "transition-all duration-200 hover:bg-white/[0.04]",
+              card.accentColor
+            )}
           >
-            {/* gradient background on hover */}
+            {/* icon */}
             <div
               className={cn(
-                "absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-300 group-hover:opacity-100",
-                card.gradient
+                "flex h-11 w-11 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-110",
+                card.iconBg
               )}
-            />
-
-            {/* emoji icon */}
-            <div className="relative mb-auto">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-3xl transition-transform duration-200 group-hover:scale-110">
-                {card.emoji}
-              </div>
+            >
+              <card.icon className={cn("h-5 w-5", card.iconColor)} />
             </div>
 
-            {/* content */}
-            <div className="relative mt-12">
+            {/* text */}
+            <div className="flex-1">
               <p className="text-sm font-semibold text-white">{card.title}</p>
               <p className="mt-1 text-xs leading-relaxed text-white/40">
                 {card.description}
@@ -121,11 +147,9 @@ export function ActionCards() {
             </div>
 
             {/* action label */}
-            <div className="relative mt-4">
-              <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors group-hover:border-white/20 group-hover:text-white/80">
-                {card.label}
-              </span>
-            </div>
+            <span className="inline-flex w-fit items-center rounded-lg border border-white/8 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/50 transition-colors group-hover:border-white/15 group-hover:text-white/70">
+              {card.label}
+            </span>
           </Link>
         ))}
       </div>
