@@ -122,7 +122,7 @@ function AgentCard({ agent }: { agent: Agent }) {
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-2xl border border-white/6",
         "transition-all duration-200 hover:border-white/12 hover:bg-white/[0.03]",
-        "cursor-pointer"
+        "cursor-pointer",
       )}
       style={{ backgroundColor: "rgba(255,255,255,0.02)", minHeight: "200px" }}
     >
@@ -138,9 +138,9 @@ function AgentCard({ agent }: { agent: Agent }) {
             src={agent.imagePath}
             alt={agent.imageAlt}
             fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
             className="object-contain object-bottom drop-shadow-lg"
             onError={(e) => {
-              // hide broken image gracefully
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
@@ -155,7 +155,7 @@ function AgentCard({ agent }: { agent: Agent }) {
             "w-full rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
             agent.connectStyle === "highlight"
               ? "bg-violet-600 text-white hover:bg-violet-500"
-              : "border border-white/10 bg-white/5 text-white/60 hover:border-white/20 hover:text-white/80"
+              : "border border-white/10 bg-white/5 text-white/60 hover:border-white/20 hover:text-white/80",
           )}
         >
           {agent.connectLabel}
