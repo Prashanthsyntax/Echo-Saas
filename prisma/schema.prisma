@@ -50,6 +50,7 @@ model Workspace {
   videos           Video[]
   folders          Folder[]
   subscription     Subscription?
+  invites     Invite[]
 }
 
 model Membership {
@@ -130,4 +131,17 @@ model Subscription {
 
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId          String    @unique
+}
+
+model Invite {
+  id          String   @id @default(cuid())
+  email       String
+  role        Role     @default(MEMBER)
+  token       String   @unique @default(cuid())
+  accepted    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
 }

@@ -31,7 +31,7 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
 ### Features
 
-##### Complete project summary
+#### Complete project summary
 
 Every feature built across this entire session:
 Core product (video SaaS):

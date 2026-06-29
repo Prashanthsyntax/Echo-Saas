@@ -11,17 +11,23 @@ export function Greeting() {
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good morning");
-    else if (hour < 18) setGreeting("Good afternoon");
+    else if (hour < 17) setGreeting("Good afternoon");
     else setGreeting("Good evening");
   }, []);
 
-  const name = user?.firstName ?? user?.username ?? "";
+  const firstName = user?.firstName;
 
   return (
-    <div className="mb-8">
-      <h1 className="text-3xl font-bold text-white">
-        {greeting}{name ? `, ${name}` : ""}
+    <div className="mb-6">
+      <h1 className="text-2xl font-bold text-white">
+        {greeting}
+        {firstName && (
+          <span className="text-white/60">, {firstName}</span>
+        )}
       </h1>
+      <p className="mt-1 text-sm text-white/30">
+        Here&apos;s what&apos;s happening with your Echo workspace today
+      </p>
     </div>
   );
 }

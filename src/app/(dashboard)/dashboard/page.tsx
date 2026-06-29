@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Library" };
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -9,43 +7,48 @@ import Link from "next/link";
 import { VideoCard } from "@/components/dashboard/video-card";
 import { Search } from "@/components/dashboard/search";
 import { Suspense } from "react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Library" };
 
 interface DashboardPageProps {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; workspace?: string }>;
 }
 
 async function VideoGrid({
   userId,
   query,
+  workspaceId,
 }: {
   userId: string;
   query?: string;
+  workspaceId?: string;
 }) {
   const clerkUser = await currentUser();
   if (!clerkUser) return null;
 
   let user = await db.user.findUnique({ where: { clerkId: userId } });
-
   if (!user) {
     user = await db.user.create({
       data: {
         clerkId: userId,
         email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
-        name:
-          [clerkUser.firstName, clerkUser.lastName]
-            .filter(Boolean)
-            .join(" ") || null,
+        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
         imageUrl: clerkUser.imageUrl,
       },
     });
   }
 
+  // if workspaceId provided, verify user is a member
+  const workspaceFilter = workspaceId
+    ? { workspaceId }
+    : {};
+
   const videos = await db.video.findMany({
     where: {
       userId: user.id,
-      ...(query
-        ? { title: { contains: query, mode: "insensitive" } }
-        : {}),
+      ...workspaceFilter,
+      ...(query ? { title: { contains: query, mode: "insensitive" as const } } : {}),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -85,17 +88,14 @@ async function VideoGrid({
   );
 }
 
-export default async function DashboardPage({
-  searchParams,
-}: DashboardPageProps) {
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const { q: query } = await searchParams;
+  const { q: query, workspace: workspaceId } = await searchParams;
 
   return (
     <div className="p-8">
-      {/* header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
@@ -116,21 +116,17 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* video grid */}
       <Suspense
-        key={query}
+        key={`${query}-${workspaceId}`}
         fallback={
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="aspect-video animate-pulse rounded-xl bg-secondary"
-              />
+              <div key={i} className="aspect-video animate-pulse rounded-xl bg-secondary" />
             ))}
           </div>
         }
       >
-        <VideoGrid userId={userId} query={query} />
+        <VideoGrid userId={userId} query={query} workspaceId={workspaceId} />
       </Suspense>
     </div>
   );
