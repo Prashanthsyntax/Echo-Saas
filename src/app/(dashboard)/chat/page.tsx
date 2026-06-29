@@ -29,6 +29,7 @@ interface Message {
   content: string;
   sources?: string[];
   context_used?: boolean;
+  model_used?: string;
 }
 
 interface Document {
@@ -108,6 +109,7 @@ export default function ChatPage() {
           content: data.answer ?? "No response.",
           sources: data.sources ?? [],
           context_used: data.context_used ?? false,
+          model_used: data.model_used,
         },
       ]);
     } catch {
@@ -128,7 +130,10 @@ export default function ChatPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIngestStatus({ state: "loading", message: `Processing ${file.name}...` });
+    setIngestStatus({
+      state: "loading",
+      message: `Processing ${file.name}...`,
+    });
 
     const formData = new FormData();
     formData.append("file", file);
@@ -141,7 +146,10 @@ export default function ChatPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setIngestStatus({ state: "error", message: data.error ?? "Upload failed" });
+        setIngestStatus({
+          state: "error",
+          message: data.error ?? "Upload failed",
+        });
         return;
       }
 
@@ -152,7 +160,10 @@ export default function ChatPage() {
       await fetchDocuments();
       setTimeout(() => setIngestStatus({ state: "idle", message: "" }), 4000);
     } catch {
-      setIngestStatus({ state: "error", message: "Upload failed — is the RAG service running?" });
+      setIngestStatus({
+        state: "error",
+        message: "Upload failed — is the RAG service running?",
+      });
     }
 
     e.target.value = "";
@@ -174,7 +185,10 @@ export default function ChatPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setIngestStatus({ state: "error", message: data.error ?? "URL fetch failed" });
+        setIngestStatus({
+          state: "error",
+          message: data.error ?? "URL fetch failed",
+        });
         return;
       }
 
@@ -276,7 +290,10 @@ export default function ChatPage() {
                     Add URL
                   </button>
                   <button
-                    onClick={() => { setShowUrlInput(false); setUrlInput(""); }}
+                    onClick={() => {
+                      setShowUrlInput(false);
+                      setUrlInput("");
+                    }}
                     className="rounded-lg px-2 py-1.5 text-xs text-white/30 hover:text-white/60"
                   >
                     Cancel
@@ -300,15 +317,15 @@ export default function ChatPage() {
                   "flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
                   ingestStatus.state === "loading" && "text-white/40",
                   ingestStatus.state === "success" && "text-emerald-400",
-                  ingestStatus.state === "error" && "text-red-400"
+                  ingestStatus.state === "error" && "text-red-400",
                 )}
                 style={{
                   backgroundColor:
                     ingestStatus.state === "success"
                       ? "rgba(52,211,153,0.08)"
                       : ingestStatus.state === "error"
-                      ? "rgba(239,68,68,0.08)"
-                      : "rgba(255,255,255,0.04)",
+                        ? "rgba(239,68,68,0.08)"
+                        : "rgba(255,255,255,0.04)",
                 }}
               >
                 {ingestStatus.state === "loading" && (
@@ -395,7 +412,7 @@ export default function ChatPage() {
                 "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors",
                 showDocPanel
                   ? "bg-white/8 text-white/60"
-                  : "text-white/30 hover:bg-white/5 hover:text-white/60"
+                  : "text-white/30 hover:bg-white/5 hover:text-white/60",
               )}
             >
               <Database className="h-3.5 w-3.5" />
@@ -490,15 +507,13 @@ export default function ChatPage() {
                 key={i}
                 className={cn(
                   "flex gap-3",
-                  msg.role === "user" && "flex-row-reverse"
+                  msg.role === "user" && "flex-row-reverse",
                 )}
               >
                 <div
                   className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                    msg.role === "assistant"
-                      ? "bg-primary/10"
-                      : "bg-white/8"
+                    msg.role === "assistant" ? "bg-primary/10" : "bg-white/8",
                   )}
                 >
                   {msg.role === "assistant" ? (
@@ -514,7 +529,7 @@ export default function ChatPage() {
                       "rounded-2xl px-4 py-3 text-sm leading-relaxed",
                       msg.role === "assistant"
                         ? "rounded-tl-sm border border-white/5 text-white/80"
-                        : "rounded-tr-sm bg-primary text-white"
+                        : "rounded-tr-sm bg-primary text-white",
                     )}
                     style={
                       msg.role === "assistant"
@@ -542,13 +557,18 @@ export default function ChatPage() {
                       </div>
                     )}
 
+                  {msg.role === "assistant" && msg.model_used && (
+                    <p className="px-1 text-[10px] text-white/15">
+                      via {msg.model_used}
+                    </p>
+                  )}
+
                   {/* no context indicator */}
-                  {msg.role === "assistant" &&
-                    msg.context_used === false && (
-                      <p className="px-1 text-[10px] text-white/20">
-                        ⚠ No relevant context found in your knowledge base
-                      </p>
-                    )}
+                  {msg.role === "assistant" && msg.context_used === false && (
+                    <p className="px-1 text-[10px] text-white/20">
+                      ⚠ No relevant context found in your knowledge base
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

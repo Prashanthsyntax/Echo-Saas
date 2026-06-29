@@ -36,6 +36,7 @@ model User {
   memberships Membership[]
   videos      Video[]
   comments    Comment[]
+  agentKeys   AgentKey[]
 }
 
 model Workspace {
@@ -144,4 +145,19 @@ model Invite {
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId String
+}
+
+model AgentKey {
+  id        String   @id @default(cuid())
+  provider  String   // "claude" | "openai" | "gemini" | "mistral"
+  keyHash   String   // we store a hash, never the raw key
+  keyHint   String   // last 4 chars of key for display e.g. "...xK9p"
+  model     String   // specific model e.g. "claude-opus-4-6"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([userId, provider])
 }
