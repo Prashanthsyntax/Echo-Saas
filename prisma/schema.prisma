@@ -36,6 +36,9 @@ model User {
   memberships Membership[]
   videos      Video[]
   comments    Comment[]
+  agentKeys   AgentKey[]
+  ragFeedback RagFeedback[]
+  chunkScores ChunkScore[]
 }
 
 model Workspace {
@@ -50,6 +53,7 @@ model Workspace {
   videos           Video[]
   folders          Folder[]
   subscription     Subscription?
+  invites     Invite[]
 }
 
 model Membership {
@@ -130,4 +134,62 @@ model Subscription {
 
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId          String    @unique
+}
+
+model Invite {
+  id          String   @id @default(cuid())
+  email       String
+  role        Role     @default(MEMBER)
+  token       String   @unique @default(cuid())
+  accepted    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+}
+
+model AgentKey {
+  id        String   @id @default(cuid())
+  provider  String   // "claude" | "openai" | "gemini" | "mistral"
+  keyHash   String   // we store a hash, never the raw key
+  keyHint   String   // last 4 chars of key for display e.g. "...xK9p"
+  model     String   // specific model e.g. "claude-opus-4-6"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([userId, provider])
+}
+
+
+model RagFeedback {
+  id            String   @id @default(cuid())
+  question      String
+  answer        String
+  sources       String[]
+  rating        Int      // 1 = thumbs up, -1 = thumbs down
+  chunkIds      String[] // which chunks were retrieved
+  modelUsed     String
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+}
+
+model ChunkScore {
+  id         String   @id @default(cuid())
+  sourceDoc  String
+  chunkText  String   @db.Text
+  chunkHash  String   // SHA-256 of chunkText, computed before insert
+  score      Float    @default(0)
+  usageCount Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@unique([userId, sourceDoc, chunkHash])
 }

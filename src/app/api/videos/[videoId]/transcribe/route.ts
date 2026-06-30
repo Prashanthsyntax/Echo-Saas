@@ -75,8 +75,27 @@ export async function POST(
     console.log(`✅ Title: ${title}`);
     console.log(`✅ Summary: ${summary}`);
 
-    // 4. update the video row
-    const updated = await db.video.update({
+    // 4. auto-ingest transcript into RAG
+    if (transcript && process.env.CHROMA_SERVICE_URL) {
+      try {
+        await fetch(`${process.env.CHROMA_SERVICE_URL}/ingest/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            content: transcript,
+            source: `Echo video: ${title ?? video.title}`,
+            source_type: "transcript",
+          }),
+        });
+        console.log("✅ Transcript auto-ingested into RAG");
+      } catch (err) {
+        console.warn("RAG auto-ingest failed (non-fatal):", err);
+      }
+    }
+
+    // 5. update the video row
+    await db.video.update({
       where: { id: videoId },
       data: {
         status: "READY",

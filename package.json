@@ -22,6 +22,7 @@
     "@xyflow/react": "^12.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3": "^7.9.0",
     "date-fns": "^4.4.0",
     "fabric": "^7.4.0",
     "geist": "^1.7.2",
@@ -29,6 +30,7 @@
     "lucide-react": "^1.21.0",
     "next": "^16.2.9",
     "ogl": "^1.0.11",
+    "pdfjs-dist": "^6.0.227",
     "pg": "^8.22.0",
     "radix-ui": "^1.6.0",
     "react": "19.2.4",
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@tailwindcss/postcss": "^4",
+    "@types/d3": "^7.4.3",
     "@types/fabric": "^5.3.11",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
