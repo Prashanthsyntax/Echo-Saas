@@ -111,7 +111,7 @@ export function ActionCards() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-white">Get started</h2>
+        <h2 className="text-base font-semibold text-white mt-10">Get started</h2>
         <p className="mt-0.5 text-sm text-white/40">
           Everything you need to build your async video workflow
         </p>
