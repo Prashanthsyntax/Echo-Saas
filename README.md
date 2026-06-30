@@ -47,3 +47,9 @@ Core product (video SaaS):
 9. Settings page (profile + workspace)
 10. Stripe billing (free/pro, checkout, customer portal)
 11. Electron desktop app with tray, native capture, device presets
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+![alt text](image.png)

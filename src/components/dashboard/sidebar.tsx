@@ -17,6 +17,7 @@ import {
   Workflow,
   Network,
   MessageSquare,
+  Bot,
   Settings,
   CreditCard,
   Plus,
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/knowledge", label: "Knowledge", icon: Network },
   { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/agents", label: "Agents", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];

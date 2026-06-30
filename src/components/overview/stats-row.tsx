@@ -11,6 +11,7 @@ interface Stats {
   views: number;
   transcripts: number;
   folders: number;
+  ragQueries: number;
 }
 
 const statConfig = [
@@ -18,7 +19,7 @@ const statConfig = [
   { key: "views" as const, label: "TOTAL VIEWS" },
   { key: "comments" as const, label: "COMMENTS" },
   { key: "transcripts" as const, label: "AI TRANSCRIPTS" },
-  { key: "folders" as const, label: "FOLDERS" },
+  { key: "ragQueries" as const, label: "RAG QUERIES" },
   { key: "workspaces" as const, label: "WORKSPACES" },
 ];
 
