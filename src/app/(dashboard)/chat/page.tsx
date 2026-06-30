@@ -242,12 +242,33 @@ export default function ChatPage() {
   const handleDeleteDoc = async (source: string) => {
     if (!confirm(`Remove "${source}" from your knowledge base?`)) return;
 
-    await fetch("/api/rag/documents", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source }),
-    });
-    setDocuments((prev) => prev.filter((d) => d.source !== source));
+    try {
+      const res = await fetch("/api/rag/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(`Failed to delete: ${data.error ?? "Unknown error"}`);
+        return;
+      }
+
+      if (data.remaining > 0) {
+        alert(
+          `Warning: ${data.remaining} chunks still remain for this document. Try refreshing and deleting again.`,
+        );
+      }
+
+      setDocuments((prev) => prev.filter((d) => d.source !== source));
+      await fetchDocuments(); // re-fetch to confirm actual state
+    } catch {
+      alert(
+        "Could not reach the RAG service. It may be cold-starting — wait 10s and try again.",
+      );
+    }
   };
 
   const totalChunks = documents.reduce((sum, d) => sum + d.chunks, 0);
@@ -391,9 +412,9 @@ export default function ChatPage() {
                 </p>
               </div>
             ) : (
-              documents.map((doc) => (
+              documents.map((doc, index) => (
                 <div
-                  key={doc.source}
+                  key={`${doc.source}-${doc.type}-${index}`}
                   className="group flex items-start gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] p-2.5"
                 >
                   <span className="mt-0.5 text-sm shrink-0">
