@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
@@ -12,14 +13,16 @@ export async function GET(req: Request) {
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
     return NextResponse.json({
-      videos: 0, comments: 0, workspaces: 0,
-      views: 0, transcripts: 0, folders: 0,
+      videos: 0,
+      comments: 0,
+      workspaces: 0,
+      views: 0,
+      transcripts: 0,
+      folders: 0,
     });
   }
 
-  const workspaceFilter = workspaceId
-    ? { workspaceId }
-    : { userId: user.id };
+  const workspaceFilter = workspaceId ? { workspaceId } : { userId: user.id };
 
   const [videos, comments, workspaces, views, transcripts, folders] =
     await Promise.all([
@@ -40,6 +43,17 @@ export async function GET(req: Request) {
       }),
     ]);
 
+  // add to the Promise.all:
+const ragStats = await db.ragFeedback.aggregate({
+  where: { userId: user.id },
+  _count: { id: true },
+  _avg: { rating: true },
+});
+
+const thumbsUp = await db.ragFeedback.count({
+  where: { userId: user.id, rating: 1 },
+});
+
   return NextResponse.json({
     videos,
     comments,
@@ -47,5 +61,10 @@ export async function GET(req: Request) {
     views: views._sum.viewCount ?? 0,
     transcripts,
     folders,
+    ragQueries: ragStats._count.id ?? 0,
+    ragAccuracy:
+      ragStats._count.id > 0
+        ? Math.round((thumbsUp / ragStats._count.id) * 100)
+        : null,
   });
 }

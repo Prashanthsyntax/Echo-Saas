@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity */
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
@@ -6,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { RagAnalytics } from "@/components/knowledge/rag-analytics";
 import { cn } from "@/lib/utils";
 import {
   Bot,
@@ -30,6 +32,9 @@ interface Message {
   sources?: string[];
   context_used?: boolean;
   model_used?: string;
+  chunk_ids?: string[];
+  feedback?: 1 | -1 | null;
+  id: string;
 }
 
 interface Document {
@@ -61,6 +66,8 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const [feedbackSent, setFeedbackSent] = useState<Record<string, 1 | -1>>({});
+
   const fetchDocuments = useCallback(async () => {
     try {
       const res = await fetch("/api/rag/documents");
@@ -72,6 +79,25 @@ export default function ChatPage() {
       setDocsLoading(false);
     }
   }, []);
+
+  const handleFeedback = async (msg: Message, rating: 1 | -1) => {
+    if (feedbackSent[msg.id]) return;
+
+    setFeedbackSent((prev) => ({ ...prev, [msg.id]: rating }));
+
+    await fetch("/api/rag/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: messages[messages.indexOf(msg) - 1]?.content ?? "",
+        answer: msg.content,
+        sources: msg.sources ?? [],
+        rating,
+        chunkIds: msg.chunk_ids ?? [],
+        modelUsed: msg.model_used ?? "echo-nemo-1.0",
+      }),
+    });
+  };
 
   useEffect(() => {
     fetchDocuments();
@@ -85,7 +111,13 @@ export default function ChatPage() {
     const content = (text ?? input).trim();
     if (!content || loading) return;
 
-    const userMsg: Message = { role: "user", content };
+    // fixed: user messages now have a unique id
+    const userMsg: Message = {
+      id: `msg_${Date.now()}_user`,
+      role: "user",
+      content,
+    };
+
     const updated = [...messages, userMsg];
     setMessages(updated);
     setInput("");
@@ -105,17 +137,20 @@ export default function ChatPage() {
       setMessages((prev) => [
         ...prev,
         {
+          id: `msg_${Date.now()}_assistant`,
           role: "assistant",
           content: data.answer ?? "No response.",
           sources: data.sources ?? [],
           context_used: data.context_used ?? false,
           model_used: data.model_used,
+          chunk_ids: data.chunk_ids ?? [],
         },
       ]);
     } catch {
       setMessages((prev) => [
         ...prev,
         {
+          id: `msg_${Date.now()}_error`,
           role: "assistant",
           content: "Something went wrong. Please try again.",
           sources: [],
@@ -384,6 +419,9 @@ export default function ChatPage() {
               ))
             )}
           </div>
+          <div className="px-3 pb-3">
+            <RagAnalytics />
+          </div>
 
           {/* model badge */}
           <div className="border-t border-white/5 px-4 py-3">
@@ -504,7 +542,7 @@ export default function ChatPage() {
 
             {messages.map((msg, i) => (
               <div
-                key={i}
+                key={msg.id}
                 className={cn(
                   "flex gap-3",
                   msg.role === "user" && "flex-row-reverse",
@@ -556,6 +594,48 @@ export default function ChatPage() {
                         ))}
                       </div>
                     )}
+
+                  {/* feedback buttons — only on assistant messages with context */}
+                  {msg.role === "assistant" && msg.context_used && (
+                    <div className="flex items-center gap-2 px-1">
+                      <p className="text-[10px] text-white/15">
+                        Was this helpful?
+                      </p>
+                      <button
+                        onClick={() => handleFeedback(msg, 1)}
+                        disabled={!!feedbackSent[msg.id]}
+                        className={cn(
+                          "rounded-lg px-2 py-1 text-xs transition-colors",
+                          feedbackSent[msg.id] === 1
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30",
+                        )}
+                        title="Good answer"
+                      >
+                        👍
+                      </button>
+                      <button
+                        onClick={() => handleFeedback(msg, -1)}
+                        disabled={!!feedbackSent[msg.id]}
+                        className={cn(
+                          "rounded-lg px-2 py-1 text-xs transition-colors",
+                          feedbackSent[msg.id] === -1
+                            ? "bg-red-500/20 text-red-400"
+                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30",
+                        )}
+                        title="Bad answer"
+                      >
+                        👎
+                      </button>
+                      {feedbackSent[msg.id] && (
+                        <span className="text-[10px] text-white/20">
+                          {feedbackSent[msg.id] === 1
+                            ? "Thanks — boosting these sources"
+                            : "Got it — reducing these sources"}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {msg.role === "assistant" && msg.model_used && (
                     <p className="px-1 text-[10px] text-white/15">

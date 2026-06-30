@@ -37,6 +37,8 @@ model User {
   videos      Video[]
   comments    Comment[]
   agentKeys   AgentKey[]
+  ragFeedback RagFeedback[]
+  chunkScores ChunkScore[]
 }
 
 model Workspace {
@@ -160,4 +162,34 @@ model AgentKey {
   userId    String
 
   @@unique([userId, provider])
+}
+
+
+model RagFeedback {
+  id            String   @id @default(cuid())
+  question      String
+  answer        String
+  sources       String[]
+  rating        Int      // 1 = thumbs up, -1 = thumbs down
+  chunkIds      String[] // which chunks were retrieved
+  modelUsed     String
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+}
+
+model ChunkScore {
+  id         String   @id @default(cuid())
+  sourceDoc  String
+  chunkText  String   @db.Text
+  chunkHash  String   // SHA-256 of chunkText, computed before insert
+  score      Float    @default(0)
+  usageCount Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@unique([userId, sourceDoc, chunkHash])
 }

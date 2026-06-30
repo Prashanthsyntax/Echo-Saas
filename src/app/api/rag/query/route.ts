@@ -13,9 +13,9 @@ You answer questions ONLY using the provided context chunks from the user's docu
 Rules:
 - Answer directly and concisely
 - If the answer is in the context, give it with confidence
-- If the context doesn't contain enough information, say exactly: "I don't have enough information in your documents to answer that."
+- If the context doesn't contain enough information, say: "I don't have enough information in your documents to answer that."
 - Never make up information not present in the context
-- Cite sources when relevant using [Source: filename] format
+- Cite sources using [Source: filename] format
 - Keep answers focused — 2-5 sentences unless detail is clearly needed`;
 
 export async function POST(req: Request) {
@@ -30,25 +30,68 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Question required" }, { status: 400 });
   }
 
-  // 1. retrieve chunks
-  const retrievalRes = await fetch(`${CHROMA_URL}/query`, {
+  const user = await db.user.findUnique({ where: { clerkId: userId } });
+
+  // 1. get chunk score boosts from feedback history
+  const boostSources: { source: string; score: number }[] = [];
+  if (user) {
+    const scores = await db.chunkScore.findMany({
+      where: { userId: user.id, score: { gt: 0 } },
+      orderBy: { score: "desc" },
+      take: 20,
+    });
+    boostSources.push(
+      ...scores.map((s) => ({ source: s.sourceDoc, score: s.score }))
+    );
+  }
+
+  // 2. expand query using conversation history
+  let expandedQuestion = question;
+  try {
+    if (history.length > 0) {
+      const expandRes = await fetch(`${CHROMA_URL}/expand-query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, history }),
+      });
+      if (expandRes.ok) {
+        const expanded = await expandRes.json();
+        expandedQuestion = expanded.expanded_question ?? question;
+      }
+    }
+  } catch {
+    // expansion is non-fatal — use original question
+  }
+
+  // 3. retrieve with adaptive scoring
+  const retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, question, top_k: 5 }),
+    body: JSON.stringify({
+      user_id: userId,
+      question: expandedQuestion,
+      top_k: 8,
+      boost_sources: boostSources,
+    }),
   });
 
   if (!retrievalRes.ok) {
-    return NextResponse.json({ error: "Retrieval service unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: "Retrieval service unavailable" },
+      { status: 503 }
+    );
   }
 
   const retrieval = await retrievalRes.json();
 
   if (!retrieval.has_context) {
     return NextResponse.json({
-      answer: "Your knowledge base is empty. Upload documents, paste a URL, or add your Echo video transcripts to get started.",
+      answer:
+        "Your knowledge base is empty. Upload documents, paste a URL, or add your Echo video transcripts to get started.",
       sources: [],
       context_used: false,
       model_used: "echo-nemo-1.0",
+      chunk_ids: [],
     });
   }
 
@@ -58,10 +101,8 @@ export async function POST(req: Request) {
 
   const userMessage = `Context from your documents:\n\n${contextBlock}\n\n---\n\nQuestion: ${question}`;
 
-  // 2. check if user has an active connected agent
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  // 4. pick model — connected agent or echo-nemo-1.0
   let agentKey = null;
-
   if (user) {
     agentKey = await db.agentKey.findFirst({
       where: {
@@ -72,9 +113,16 @@ export async function POST(req: Request) {
     });
   }
 
-  // 3. generate answer — agent model or echo-nemo-1.0
   let answer = "";
   let modelUsed = "echo-nemo-1.0 (Groq Llama 3.3 70B)";
+
+  const messages = [
+    ...history.slice(-6).map((m: { role: string; content: string }) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    { role: "user" as const, content: userMessage },
+  ];
 
   if (agentKey) {
     const decrypted = decrypt(agentKey.keyHash);
@@ -89,15 +137,6 @@ export async function POST(req: Request) {
     answer = result.answer;
     modelUsed = `${agentKey.provider} / ${agentKey.model}`;
   } else {
-    // default: Groq Llama
-    const messages = [
-      ...history.slice(-6).map((m: { role: string; content: string }) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-      { role: "user" as const, content: userMessage },
-    ];
-
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
@@ -112,11 +151,10 @@ export async function POST(req: Request) {
     sources: retrieval.sources,
     context_used: true,
     chunks_retrieved: retrieval.chunks.length,
+    chunk_ids: retrieval.chunk_ids ?? [],
     model_used: modelUsed,
   });
 }
-
-// ── agent model callers ───────────────────────────────────────────────────────
 
 async function callAgentModel(
   provider: string,
@@ -185,8 +223,7 @@ async function callAgentModel(
     );
     const data = await res.json();
     return {
-      answer:
-        data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response.",
+      answer: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response.",
     };
   }
 
