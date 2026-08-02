@@ -39,6 +39,7 @@ model User {
   agentKeys   AgentKey[]
   ragFeedback RagFeedback[]
   chunkScores ChunkScore[]
+  chatSessions  ChatSession[]
 }
 
 model Workspace {
@@ -54,6 +55,7 @@ model Workspace {
   folders          Folder[]
   subscription     Subscription?
   invites     Invite[]
+  chatSessions  ChatSession[]
 }
 
 model Membership {
@@ -192,4 +194,35 @@ model ChunkScore {
   userId String
 
   @@unique([userId, sourceDoc, chunkHash])
+}
+
+model ChatSession {
+  id          String        @id @default(cuid())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  messages    ChatMessage[]
+
+  @@unique([userId, workspaceId])
+}
+
+model ChatMessage {
+  id          String      @id @default(cuid())
+  role        String      // "user" | "assistant"
+  content     String      @db.Text
+  sources     String[]
+  modelUsed   String?
+  contextUsed Boolean     @default(false)
+  chunkIds    String[]
+  feedback    Int?        // 1 = thumbs up, -1 = thumbs down, null = no feedback
+  createdAt   DateTime    @default(now())
+
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId   String
 }
