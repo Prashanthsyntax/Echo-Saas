@@ -3,6 +3,16 @@ import { NextResponse } from "next/server";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
+async function safeParseError(res: Response, fallback: string): Promise<string> {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    return json.detail ?? json.error ?? fallback;
+  } catch {
+    return text.slice(0, 200) || fallback;
+  }
+}
+
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -12,7 +22,6 @@ export async function POST(req: Request) {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("multipart/form-data")) {
-    // file upload — forward to Chroma service
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
@@ -30,8 +39,9 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      return NextResponse.json({ error: err.detail ?? "Ingestion failed" }, { status: 500 });
+      const errorMsg = await safeParseError(res, "File ingestion failed");
+      console.error("Chroma file ingest error:", errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     return NextResponse.json(await res.json());
@@ -48,8 +58,9 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      return NextResponse.json({ error: err.detail ?? "URL ingestion failed" }, { status: 500 });
+      const errorMsg = await safeParseError(res, "URL ingestion failed");
+      console.error("Chroma URL ingest error:", errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     return NextResponse.json(await res.json());
@@ -68,8 +79,9 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      return NextResponse.json({ error: err.detail ?? "Text ingestion failed" }, { status: 500 });
+      const errorMsg = await safeParseError(res, "Text ingestion failed");
+      console.error("Chroma text ingest error:", errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     return NextResponse.json(await res.json());

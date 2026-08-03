@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { Greeting } from "@/components/overview/greeting";
 import { StatsRow } from "@/components/overview/stats-row";
 import { ActionCards } from "@/components/overview/action-cards";
-import { DataSources } from "@/components/overview/data-sources";
 import { AgentsSection } from "@/components/overview/agents-section";
+import { DataSources } from "@/components/overview/data-sources";
+import { ModelCard } from "@/components/overview/model-card";
 
 export default async function OverviewPage() {
   const { userId } = await auth();
@@ -14,6 +15,7 @@ export default async function OverviewPage() {
     <div className="min-h-full p-8">
       <Greeting />
       <StatsRow />
+      <ModelCard />
       <ActionCards />
       <AgentsSection />
       <DataSources />

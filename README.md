@@ -53,3 +53,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ![alt text](image.png)
+
+#### System Architecture
+
+![alt text](images/echo_full_project_architecture.png)
