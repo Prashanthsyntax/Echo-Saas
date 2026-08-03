@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TrendingUp, ThumbsUp, ThumbsDown, Brain, BarChart3 } from "lucide-react";
+import {
+  TrendingUp,
+  ThumbsUp,
+  ThumbsDown,
+  Brain,
+  BarChart3,
+} from "lucide-react";
 
 interface RagStats {
   total: number;
@@ -66,8 +72,8 @@ export function RagAnalytics() {
                   stats.accuracyPercent >= 80
                     ? "#34d399"
                     : stats.accuracyPercent >= 60
-                    ? "#fbbf24"
-                    : "#f87171",
+                      ? "#fbbf24"
+                      : "#f87171",
               }}
             />
           </div>
@@ -110,9 +116,9 @@ export function RagAnalytics() {
             <TrendingUp className="h-3 w-3" />
             Most reliable sources
           </p>
-          {topSources.slice(0, 3).map((src) => (
+          {topSources.slice(0, 3).map((src, index) => (
             <div
-              key={src.sourceDoc}
+              key={`${src.sourceDoc}-${index}`}
               className="flex items-center justify-between"
             >
               <p className="truncate text-[11px] text-white/40 max-w-[140px]">
@@ -129,9 +135,7 @@ export function RagAnalytics() {
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-white/20">
-                  {src.usageCount}x
-                </p>
+                <p className="text-[10px] text-white/20">{src.usageCount}x</p>
               </div>
             </div>
           ))}
