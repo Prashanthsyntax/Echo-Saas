@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import type { KnowledgeGraph } from "./knowledge-types";
 
 interface PdfUploaderProps {
-  onGraphReady: (graph: KnowledgeGraph) => void;
+  onGraphReady: (graph: KnowledgeGraph, sourceFile: string) => void;
 }
 
 export function PdfUploader({ onGraphReady }: PdfUploaderProps) {
@@ -81,7 +81,7 @@ export function PdfUploader({ onGraphReady }: PdfUploaderProps) {
         }
 
         const graph: KnowledgeGraph = await res.json();
-        onGraphReady(graph);
+        onGraphReady(graph, file.name);
         setStatus("idle");
       } catch (err: unknown) {
         setError(

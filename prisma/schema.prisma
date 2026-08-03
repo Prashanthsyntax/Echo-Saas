@@ -40,6 +40,7 @@ model User {
   ragFeedback RagFeedback[]
   chunkScores ChunkScore[]
   chatSessions  ChatSession[]
+  knowledgeGraphs KnowledgeGraph[]
 }
 
 model Workspace {
@@ -56,6 +57,7 @@ model Workspace {
   subscription     Subscription?
   invites     Invite[]
   chatSessions  ChatSession[]
+  knowledgeGraphs KnowledgeGraph[]
 }
 
 model Membership {
@@ -225,4 +227,27 @@ model ChatMessage {
 
   session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId   String
+}
+
+model KnowledgeGraph {
+  id          String   @id @default(cuid())
+  title       String
+  summary     String   @db.Text
+  graphData   Json     // stores nodes + edges as JSON
+  nodePositions Json   // stores {nodeId: {x, y}} map
+  zoomLevel   Float    @default(1)
+  panX        Float    @default(0)
+  panY        Float    @default(0)
+  selectedNodeId String?
+  sourceFile  String?  // original filename/URL
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  @@unique([userId, workspaceId])
 }
