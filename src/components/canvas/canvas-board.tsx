@@ -4,21 +4,22 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { CanvasToolbar, type CanvasTool } from "./canvas-toolbar";
 import { PropertiesPanel } from "./properties-panel";
+import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
+import { Loader2, Trash2 } from "lucide-react";
 
 export function CanvasBoard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const initializingRef = useRef(false);
+  const isRestoringRef = useRef(false);
 
   const [activeTool, setActiveTool] = useState<CanvasTool>("select");
   const [zoom, setZoom] = useState(1);
   const [strokeColor, setStrokeColor] = useState("#F4F4F5");
   const [fillColor, setFillColor] = useState("transparent");
   const [strokeWidth, setStrokeWidth] = useState(2);
-
-  const isDrawingShape = useRef(false);
-  const startPoint = useRef({ x: 0, y: 0 });
-  const activeShape = useRef<any>(null);
+  const [objectCount, setObjectCount] = useState(0);
 
   const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
@@ -29,6 +30,68 @@ export function CanvasBoard() {
   useEffect(() => { strokeColorRef.current = strokeColor; }, [strokeColor]);
   useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
   useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
+
+  const isDrawingShape = useRef(false);
+  const startPoint = useRef({ x: 0, y: 0 });
+  const activeShape = useRef<any>(null);
+
+  const {
+    savedState,
+    loading,
+    saving,
+    saveCanvasState,
+    clearCanvasState,
+  } = useCanvasPersistence();
+
+  // trigger save on any canvas change
+  const triggerSave = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || isRestoringRef.current) return;
+
+    const json = canvas.toJSON();
+    const vpt = canvas.viewportTransform;
+    const currentZoom = canvas.getZoom();
+    const count = canvas.getObjects().length;
+
+    setObjectCount(count);
+    saveCanvasState(
+      json,
+      { x: vpt[4], y: vpt[5], zoom: currentZoom },
+      count
+    );
+  }, [saveCanvasState]);
+
+  // restore saved canvas state
+  const restoreCanvasState = useCallback(
+    async (canvas: any, fabricModule: any) => {
+      if (!savedState?.canvasData) return;
+
+      isRestoringRef.current = true;
+      try {
+        await new Promise<void>((resolve) => {
+          canvas.loadFromJSON(savedState.canvasData, () => {
+            canvas.requestRenderAll();
+
+            // restore viewport transform
+            const vpt = canvas.viewportTransform;
+            vpt[4] = savedState.viewportX;
+            vpt[5] = savedState.viewportY;
+            canvas.setZoom(savedState.zoomLevel);
+            canvas.requestRenderAll();
+
+            setZoom(savedState.zoomLevel);
+            setObjectCount(savedState.objectCount);
+            resolve();
+          });
+        });
+      } catch (err) {
+        console.error("Failed to restore canvas:", err);
+      } finally {
+        isRestoringRef.current = false;
+      }
+    },
+    [savedState]
+  );
 
   const handleMouseDown = useCallback((opt: any, canvas: any) => {
     const tool = activeToolRef.current;
@@ -73,6 +136,7 @@ export function CanvasBoard() {
       text.enterEditing();
       setActiveTool("select");
       isDrawingShape.current = false;
+      triggerSave();
       return;
     } else if (tool === "sticky") {
       const bg = new Rect({
@@ -91,6 +155,7 @@ export function CanvasBoard() {
       canvas.add(group);
       setActiveTool("select");
       isDrawingShape.current = false;
+      triggerSave();
       return;
     }
 
@@ -98,7 +163,7 @@ export function CanvasBoard() {
       canvas.add(shape);
       activeShape.current = shape;
     }
-  }, []);
+  }, [triggerSave]);
 
   const handleMouseMove = useCallback((opt: any, canvas: any) => {
     if (!isDrawingShape.current || !activeShape.current) return;
@@ -122,7 +187,6 @@ export function CanvasBoard() {
     } else if (tool === "line") {
       shape.set({ x2: pointer.x, y2: pointer.y });
     }
-
     canvas.requestRenderAll();
   }, []);
 
@@ -135,26 +199,27 @@ export function CanvasBoard() {
       activeShape.current = null;
     }
     setActiveTool("select");
-  }, []);
+    triggerSave();
+  }, [triggerSave]);
 
+  // initialize Fabric.js
   useEffect(() => {
+    // wait for saved state to load before initializing
+    if (loading) return;
+    if (initializingRef.current) return;
+    initializingRef.current = true;
+
     let canvas: any = null;
     let ro: ResizeObserver | null = null;
-    let disposed = false;
 
-    import("fabric").then((fabricModule) => {
-      // If the effect already cleaned up before the async import resolved, bail out
-      if (disposed) return;
-
+    import("fabric").then(async (fabricModule) => {
       const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } = fabricModule;
       const container = containerRef.current;
       const canvasEl = canvasRef.current;
       if (!container || !canvasEl) return;
 
-      // Dispose any existing Fabric instance on this element before creating a new one
-      if (fabricRef.current) {
-        try { fabricRef.current.dispose(); } catch {}
-        fabricRef.current = null;
+      if ((canvasEl as any).__fabric) {
+        delete (canvasEl as any).__fabric;
       }
 
       canvas = new Canvas(canvasEl, {
@@ -171,6 +236,11 @@ export function CanvasBoard() {
       canvas.freeDrawingBrush = new PencilBrush(canvas);
       canvas.freeDrawingBrush.color = "#F4F4F5";
       canvas.freeDrawingBrush.width = 2;
+
+      // restore saved state if available
+      if (savedState?.canvasData) {
+        await restoreCanvasState(canvas, fabricModule);
+      }
 
       let isPanning = false;
       let lastPos = { x: 0, y: 0 };
@@ -202,8 +272,12 @@ export function CanvasBoard() {
       });
 
       canvas.on("mouse:up", () => {
-        isPanning = false;
-        canvas.setCursor("default");
+        if (isPanning) {
+          isPanning = false;
+          canvas.setCursor("default");
+          triggerSave(); // save viewport after pan
+          return;
+        }
         handleMouseUp(canvas);
       });
 
@@ -216,7 +290,14 @@ export function CanvasBoard() {
         setZoom(z);
         opt.e.preventDefault();
         opt.e.stopPropagation();
+        triggerSave(); // save after zoom
       });
+
+      // save after any object modification
+      canvas.on("object:modified", triggerSave);
+      canvas.on("object:added", triggerSave);
+      canvas.on("object:removed", triggerSave);
+      canvas.on("path:created", triggerSave); // freehand drawing complete
 
       ro = new ResizeObserver(() => {
         if (!container || !canvas) return;
@@ -229,16 +310,16 @@ export function CanvasBoard() {
     });
 
     return () => {
-      disposed = true;
       ro?.disconnect();
-      if (fabricRef.current) {
-        try { fabricRef.current.dispose(); } catch {}
-        fabricRef.current = null;
+      if (canvas) {
+        try { canvas.dispose(); } catch {}
       }
+      fabricRef.current = null;
+      initializingRef.current = false;
     };
-  }, [handleMouseDown, handleMouseMove, handleMouseUp]);
+  }, [loading, savedState]); // eslint-disable-line
 
-  // Sync tool + brush when state changes
+  // sync tool mode
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -259,7 +340,19 @@ export function CanvasBoard() {
     canvas.getActiveObjects().forEach((obj: any) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-  }, []);
+    triggerSave();
+  }, [triggerSave]);
+
+  const handleClearCanvas = useCallback(async () => {
+    if (!confirm("Clear the entire canvas? This cannot be undone.")) return;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.clear();
+    canvas.backgroundColor = "#0A0A0F";
+    canvas.requestRenderAll();
+    setObjectCount(0);
+    await clearCanvasState();
+  }, [clearCanvasState]);
 
   const handleExport = useCallback(() => {
     const canvas = fabricRef.current;
@@ -267,7 +360,7 @@ export function CanvasBoard() {
     const dataURL = canvas.toDataURL({ format: "png", multiplier: 2 });
     const a = document.createElement("a");
     a.href = dataURL;
-    a.download = `echo-canvas-${Date.now()}.png`;
+    a.download = `canvas-${Date.now()}.png`;
     a.click();
   }, []);
 
@@ -277,7 +370,8 @@ export function CanvasBoard() {
     const z = Math.min(5, canvas.getZoom() * 1.2);
     canvas.setZoom(z);
     setZoom(z);
-  }, []);
+    triggerSave();
+  }, [triggerSave]);
 
   const handleZoomOut = useCallback(() => {
     const canvas = fabricRef.current;
@@ -285,7 +379,8 @@ export function CanvasBoard() {
     const z = Math.max(0.1, canvas.getZoom() / 1.2);
     canvas.setZoom(z);
     setZoom(z);
-  }, []);
+    triggerSave();
+  }, [triggerSave]);
 
   const handleReset = useCallback(() => {
     const canvas = fabricRef.current;
@@ -293,7 +388,8 @@ export function CanvasBoard() {
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     canvas.setZoom(1);
     setZoom(1);
-  }, []);
+    triggerSave();
+  }, [triggerSave]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -312,15 +408,40 @@ export function CanvasBoard() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [handleDelete]);
 
+  // show loading while fetching saved state
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-white/30">Restoring your canvas...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <div>
           <h1 className="text-sm font-semibold">Canvas</h1>
-          <p className="text-xs text-muted-foreground">
-            Alt+drag or middle-click to pan · Scroll to zoom
-          </p>
+          <div className="flex items-center gap-3 mt-0.5">
+            <p className="text-xs text-muted-foreground">
+              Alt+drag to pan · Scroll to zoom
+            </p>
+            {saving && (
+              <span className="text-[10px] text-white/20 animate-pulse">
+                saving...
+              </span>
+            )}
+            {!saving && objectCount > 0 && (
+              <span className="text-[10px] text-white/20">
+                {objectCount} object{objectCount !== 1 ? "s" : ""} · auto-saved
+              </span>
+            )}
+          </div>
         </div>
+
         <CanvasToolbar
           activeTool={activeTool}
           onToolChange={setActiveTool}
@@ -331,7 +452,16 @@ export function CanvasBoard() {
           onReset={handleReset}
           zoom={zoom}
         />
-        <div className="w-[140px]" />
+
+        {/* clear canvas button */}
+        <button
+          onClick={handleClearCanvas}
+          title="Clear entire canvas"
+          className="flex items-center gap-1.5 rounded-lg border border-destructive/20 px-3 py-1.5 text-xs text-destructive/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Clear all
+        </button>
       </div>
 
       <div className="relative flex flex-1 overflow-hidden">
