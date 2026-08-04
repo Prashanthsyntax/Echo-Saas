@@ -18,9 +18,13 @@ export async function GET(
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  // verify requester is a member of this workspace
   const membership = await db.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+    where: {
+      userId_workspaceId: { userId: user.id, workspaceId },
+    },
   });
+
   if (!membership) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -51,6 +55,7 @@ export async function GET(
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
       },
     }
   );
@@ -74,7 +79,9 @@ export async function DELETE(
   }
 
   const requester = await db.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+    where: {
+      userId_workspaceId: { userId: user.id, workspaceId },
+    },
   });
 
   if (!requester || requester.role === "MEMBER") {
@@ -82,7 +89,9 @@ export async function DELETE(
   }
 
   await db.membership.delete({
-    where: { userId_workspaceId: { userId: memberId, workspaceId } },
+    where: {
+      userId_workspaceId: { userId: memberId, workspaceId },
+    },
   });
 
   return NextResponse.json({ success: true });
