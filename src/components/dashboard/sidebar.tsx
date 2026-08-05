@@ -22,6 +22,7 @@ import {
   CreditCard,
   Plus,
 } from "lucide-react";
+import { Role } from "@prisma/client";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -43,6 +44,7 @@ export function Sidebar() {
   const [managingWorkspace, setManagingWorkspace] = useState<{
     id: string;
     name: string;
+    role: Role;
   } | null>(null);
 
   const name =
@@ -74,7 +76,9 @@ export function Sidebar() {
 
         {/* workspace switcher */}
         <WorkspaceSwitcher
-          onManage={(id, name) => setManagingWorkspace({ id, name })}
+          onManage={(id, name, role) =>
+            setManagingWorkspace({ id, name, role })
+          }
         />
 
         {/* new recording */}
@@ -150,6 +154,7 @@ export function Sidebar() {
         <WorkspaceManager
           workspaceId={managingWorkspace.id}
           workspaceName={managingWorkspace.name}
+          currentUserRole={managingWorkspace.role}
           onClose={() => setManagingWorkspace(null)}
         />
       )}

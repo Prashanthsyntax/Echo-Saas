@@ -1,18 +1,32 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  Bot, User, Send, Loader2, Upload, Link2,
-  FileText, Trash2, Database, Sparkles,
-  CheckCircle2, AlertCircle, ThumbsUp, ThumbsDown,
+  Bot,
+  User,
+  Send,
+  Loader2,
+  Upload,
+  Link2,
+  FileText,
+  Trash2,
+  Database,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
-import { useChatPersistence, type PersistedMessage } from "@/hooks/use-chat-persistence";
+import {
+  useChatPersistence,
+  type PersistedMessage,
+} from "@/hooks/use-chat-persistence";
 import { RagAnalytics } from "@/components/knowledge/rag-analytics";
+import { useWorkspace } from "@/lib/workspace-context";
 
 interface Document {
   source: string;
@@ -26,7 +40,7 @@ interface IngestStatus {
 }
 
 export default function ChatPage() {
-  const { user } = useUser();
+  const { workspaceId } = useWorkspace();
 
   // persistence hook — replaces manual useState for messages
   const {
@@ -61,12 +75,17 @@ export default function ChatPage() {
       const res = await fetch("/api/rag/documents");
       const data = await res.json();
       setDocuments(data.documents ?? []);
-    } catch {}
-    finally { setDocsLoading(false); }
+    } catch {
+    } finally {
+      setDocsLoading(false);
+    }
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { fetchDocuments(); }, [fetchDocuments]);
+  
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDocuments();
+  }, [fetchDocuments]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,8 +116,8 @@ export default function ChatPage() {
     if (userMsgId) {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempUserMsg.id ? { ...m, id: userMsgId } : m
-        )
+          m.id === tempUserMsg.id ? { ...m, id: userMsgId } : m,
+        ),
       );
     }
 
@@ -138,15 +157,15 @@ export default function ChatPage() {
           modelUsed: tempAssistantMsg.modelUsed ?? undefined,
           contextUsed: tempAssistantMsg.contextUsed,
           chunkIds: tempAssistantMsg.chunkIds,
-        }
+        },
       );
 
       // replace temp ID with real DB ID
       if (assistantMsgId) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === tempAssistantMsg.id ? { ...m, id: assistantMsgId } : m
-          )
+            m.id === tempAssistantMsg.id ? { ...m, id: assistantMsgId } : m,
+          ),
         );
       }
     } catch {
@@ -198,21 +217,39 @@ export default function ChatPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIngestStatus({ state: "loading", message: `Processing ${file.name}...` });
+    setIngestStatus({
+      state: "loading",
+      message: `Processing ${file.name}...`,
+    });
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/rag/ingest", { method: "POST", body: formData });
+      const res = await fetch("/api/rag/ingest", {
+        method: "POST",
+        body: formData,
+        headers: {
+          "x-workspace-id": workspaceId ?? "",
+        },
+      });
       const data = await res.json();
       if (!res.ok) {
-        setIngestStatus({ state: "error", message: data.error ?? "Upload failed" });
+        setIngestStatus({
+          state: "error",
+          message: data.error ?? "Upload failed",
+        });
         return;
       }
-      setIngestStatus({ state: "success", message: `✓ ${file.name} — ${data.ingested} chunks indexed` });
+      setIngestStatus({
+        state: "success",
+        message: `✓ ${file.name} — ${data.ingested} chunks indexed`,
+      });
       await fetchDocuments();
       setTimeout(() => setIngestStatus({ state: "idle", message: "" }), 4000);
     } catch {
-      setIngestStatus({ state: "error", message: "Upload failed — is the RAG service running?" });
+      setIngestStatus({
+        state: "error",
+        message: "Upload failed — is the RAG service running?",
+      });
     }
     e.target.value = "";
   };
@@ -230,10 +267,16 @@ export default function ChatPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setIngestStatus({ state: "error", message: data.error ?? "URL fetch failed" });
+        setIngestStatus({
+          state: "error",
+          message: data.error ?? "URL fetch failed",
+        });
         return;
       }
-      setIngestStatus({ state: "success", message: `✓ ${url} — ${data.ingested} chunks indexed` });
+      setIngestStatus({
+        state: "success",
+        message: `✓ ${url} — ${data.ingested} chunks indexed`,
+      });
       setUrlInput("");
       await fetchDocuments();
       setTimeout(() => setIngestStatus({ state: "idle", message: "" }), 4000);
@@ -260,8 +303,14 @@ export default function ChatPage() {
   const totalChunks = documents.reduce((sum, d) => sum + d.chunks, 0);
 
   const typeIcon: Record<string, string> = {
-    pdf: "📄", docx: "📝", doc: "📝", csv: "📊",
-    txt: "📋", md: "📋", url: "🔗", transcript: "🎥",
+    pdf: "📄",
+    docx: "📝",
+    doc: "📝",
+    csv: "📊",
+    txt: "📋",
+    md: "📋",
+    url: "🔗",
+    transcript: "🎥",
   };
 
   // show loading skeleton while restoring session
@@ -270,7 +319,9 @@ export default function ChatPage() {
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-xs text-white/30">Restoring your conversation...</p>
+          <p className="text-xs text-white/30">
+            Restoring your conversation...
+          </p>
         </div>
       </div>
     );
@@ -291,7 +342,10 @@ export default function ChatPage() {
             </div>
             <Badge
               className="border-0 text-[10px]"
-              style={{ backgroundColor: "rgba(139,92,246,0.15)", color: "#a78bfa" }}
+              style={{
+                backgroundColor: "rgba(139,92,246,0.15)",
+                color: "#a78bfa",
+              }}
             >
               {totalChunks} chunks
             </Badge>
@@ -333,7 +387,10 @@ export default function ChatPage() {
                     Add URL
                   </button>
                   <button
-                    onClick={() => { setShowUrlInput(false); setUrlInput(""); }}
+                    onClick={() => {
+                      setShowUrlInput(false);
+                      setUrlInput("");
+                    }}
                     className="rounded-lg px-2 py-1.5 text-xs text-white/30 hover:text-white/60"
                   >
                     Cancel
@@ -356,18 +413,26 @@ export default function ChatPage() {
                   "flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
                   ingestStatus.state === "loading" && "text-white/40",
                   ingestStatus.state === "success" && "text-emerald-400",
-                  ingestStatus.state === "error" && "text-red-400"
+                  ingestStatus.state === "error" && "text-red-400",
                 )}
                 style={{
                   backgroundColor:
-                    ingestStatus.state === "success" ? "rgba(52,211,153,0.08)"
-                    : ingestStatus.state === "error" ? "rgba(239,68,68,0.08)"
-                    : "rgba(255,255,255,0.04)",
+                    ingestStatus.state === "success"
+                      ? "rgba(52,211,153,0.08)"
+                      : ingestStatus.state === "error"
+                        ? "rgba(239,68,68,0.08)"
+                        : "rgba(255,255,255,0.04)",
                 }}
               >
-                {ingestStatus.state === "loading" && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" />}
-                {ingestStatus.state === "success" && <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />}
-                {ingestStatus.state === "error" && <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />}
+                {ingestStatus.state === "loading" && (
+                  <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" />
+                )}
+                {ingestStatus.state === "success" && (
+                  <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                )}
+                {ingestStatus.state === "error" && (
+                  <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                )}
                 <span>{ingestStatus.message}</span>
               </div>
             )}
@@ -388,12 +453,18 @@ export default function ChatPage() {
                   key={`${doc.source}-${doc.type}-${index}`}
                   className="group flex items-start gap-2.5 rounded-lg border border-white/5 bg-white/[0.02] p-2.5"
                 >
-                  <span className="mt-0.5 text-sm shrink-0">{typeIcon[doc.type] ?? "📄"}</span>
+                  <span className="mt-0.5 text-sm shrink-0">
+                    {typeIcon[doc.type] ?? "📄"}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[11px] font-medium text-white/60">
-                      {doc.source.length > 30 ? doc.source.slice(0, 27) + "..." : doc.source}
+                      {doc.source.length > 30
+                        ? doc.source.slice(0, 27) + "..."
+                        : doc.source}
                     </p>
-                    <p className="text-[10px] text-white/25">{doc.chunks} chunks</p>
+                    <p className="text-[10px] text-white/25">
+                      {doc.chunks} chunks
+                    </p>
                   </div>
                   <button
                     onClick={() => handleDeleteDoc(doc.source)}
@@ -413,7 +484,9 @@ export default function ChatPage() {
           <div className="border-t border-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-primary" />
-              <p className="text-[10px] font-medium text-white/30">echo-nemo-1.0</p>
+              <p className="text-[10px] font-medium text-white/30">
+                echo-nemo-1.0
+              </p>
               {saving && (
                 <span className="ml-auto text-[9px] text-white/20 animate-pulse">
                   saving...
@@ -432,7 +505,9 @@ export default function ChatPage() {
               onClick={() => setShowDocPanel(!showDocPanel)}
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors",
-                showDocPanel ? "bg-white/8 text-white/60" : "text-white/30 hover:bg-white/5 hover:text-white/60"
+                showDocPanel
+                  ? "bg-white/8 text-white/60"
+                  : "text-white/30 hover:bg-white/5 hover:text-white/60",
               )}
             >
               <Database className="h-3.5 w-3.5" />
@@ -440,7 +515,13 @@ export default function ChatPage() {
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className="gap-1 border-0 text-[10px]" style={{ backgroundColor: "rgba(139,92,246,0.12)", color: "#a78bfa" }}>
+            <Badge
+              className="gap-1 border-0 text-[10px]"
+              style={{
+                backgroundColor: "rgba(139,92,246,0.12)",
+                color: "#a78bfa",
+              }}
+            >
               <Sparkles className="h-2.5 w-2.5" />
               echo-nemo-1.0
             </Badge>
@@ -457,7 +538,9 @@ export default function ChatPage() {
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/8 bg-white/3">
                   <Sparkles className="h-7 w-7 text-primary" />
                 </div>
-                <h2 className="mt-5 text-base font-semibold text-white">echo-nemo-1.0</h2>
+                <h2 className="mt-5 text-base font-semibold text-white">
+                  echo-nemo-1.0
+                </h2>
                 <p className="mt-2 text-sm text-white/30">
                   {documents.length === 0
                     ? "Upload a file or add a URL to start chatting with your knowledge base."
@@ -465,7 +548,11 @@ export default function ChatPage() {
                 </p>
                 {documents.length > 0 && (
                   <div className="mt-6 flex flex-wrap justify-center gap-2">
-                    {["What are the main topics covered?", "Summarise the key points", "What does this document say about..."].map((q) => (
+                    {[
+                      "What are the main topics covered?",
+                      "Summarise the key points",
+                      "What does this document say about...",
+                    ].map((q) => (
                       <button
                         key={q}
                         onClick={() => sendMessage(q)}
@@ -480,14 +567,24 @@ export default function ChatPage() {
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className={cn("flex gap-3", msg.role === "user" && "flex-row-reverse")}>
-                <div className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                  msg.role === "assistant" ? "bg-primary/10" : "bg-white/8"
-                )}>
-                  {msg.role === "assistant"
-                    ? <Bot className="h-4 w-4 text-primary" />
-                    : <User className="h-4 w-4 text-white/40" />}
+              <div
+                key={msg.id}
+                className={cn(
+                  "flex gap-3",
+                  msg.role === "user" && "flex-row-reverse",
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                    msg.role === "assistant" ? "bg-primary/10" : "bg-white/8",
+                  )}
+                >
+                  {msg.role === "assistant" ? (
+                    <Bot className="h-4 w-4 text-primary" />
+                  ) : (
+                    <User className="h-4 w-4 text-white/40" />
+                  )}
                 </div>
 
                 <div className="max-w-[520px] space-y-2">
@@ -496,27 +593,38 @@ export default function ChatPage() {
                       "rounded-2xl px-4 py-3 text-sm leading-relaxed",
                       msg.role === "assistant"
                         ? "rounded-tl-sm border border-white/5 text-white/80"
-                        : "rounded-tr-sm bg-primary text-white"
+                        : "rounded-tr-sm bg-primary text-white",
                     )}
-                    style={msg.role === "assistant" ? { backgroundColor: "rgba(255,255,255,0.04)" } : undefined}
+                    style={
+                      msg.role === "assistant"
+                        ? { backgroundColor: "rgba(255,255,255,0.04)" }
+                        : undefined
+                    }
                   >
                     {msg.content}
                   </div>
 
-                  {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 px-1">
-                      {msg.sources.map((src) => (
-                        <span key={src} className="flex items-center gap-1 rounded-full border border-white/8 px-2 py-0.5 text-[10px] text-white/25">
-                          <FileText className="h-2.5 w-2.5" />
-                          {src.length > 30 ? src.slice(0, 27) + "..." : src}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {msg.role === "assistant" &&
+                    msg.sources &&
+                    msg.sources.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 px-1">
+                        {msg.sources.map((src) => (
+                          <span
+                            key={src}
+                            className="flex items-center gap-1 rounded-full border border-white/8 px-2 py-0.5 text-[10px] text-white/25"
+                          >
+                            <FileText className="h-2.5 w-2.5" />
+                            {src.length > 30 ? src.slice(0, 27) + "..." : src}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                   {msg.role === "assistant" && msg.contextUsed && (
                     <div className="flex items-center gap-2 px-1">
-                      <p className="text-[10px] text-white/15">Was this helpful?</p>
+                      <p className="text-[10px] text-white/15">
+                        Was this helpful?
+                      </p>
                       <button
                         onClick={() => handleFeedback(msg, 1)}
                         disabled={!!feedbackSent[msg.id]}
@@ -524,7 +632,7 @@ export default function ChatPage() {
                           "rounded-lg px-2 py-1 text-xs transition-colors",
                           feedbackSent[msg.id] === 1
                             ? "bg-emerald-500/20 text-emerald-400"
-                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30"
+                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30",
                         )}
                       >
                         <ThumbsUp className="h-3 w-3" />
@@ -536,21 +644,25 @@ export default function ChatPage() {
                           "rounded-lg px-2 py-1 text-xs transition-colors",
                           feedbackSent[msg.id] === -1
                             ? "bg-red-500/20 text-red-400"
-                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30"
+                            : "text-white/20 hover:bg-white/5 hover:text-white/50 disabled:opacity-30",
                         )}
                       >
                         <ThumbsDown className="h-3 w-3" />
                       </button>
                       {feedbackSent[msg.id] && (
                         <span className="text-[10px] text-white/20">
-                          {feedbackSent[msg.id] === 1 ? "Boosting these sources" : "Reducing these sources"}
+                          {feedbackSent[msg.id] === 1
+                            ? "Boosting these sources"
+                            : "Reducing these sources"}
                         </span>
                       )}
                     </div>
                   )}
 
                   {msg.role === "assistant" && msg.modelUsed && (
-                    <p className="px-1 text-[10px] text-white/15">via {msg.modelUsed}</p>
+                    <p className="px-1 text-[10px] text-white/15">
+                      via {msg.modelUsed}
+                    </p>
                   )}
                 </div>
               </div>
@@ -601,7 +713,11 @@ export default function ChatPage() {
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || querying}
               >
-                {querying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {querying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
 

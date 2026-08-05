@@ -5,6 +5,7 @@ import { Check, ChevronDown, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-context";
 import { workspaceStore } from "@/lib/workspace-store";
+import type { Role } from "@prisma/client";
 
 interface Workspace {
   id: string;
@@ -16,7 +17,7 @@ interface Workspace {
 }
 
 interface WorkspaceSwitcherProps {
-  onManage: (id: string, name: string) => void;
+  onManage: (id: string, name: string, role: Role) => void;
 }
 
 export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
@@ -57,7 +58,7 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
     // catches the case where they accepted an invite in another tab
     window.addEventListener("focus", fetchWorkspaces);
     return () => window.removeEventListener("focus", fetchWorkspaces);
-  }, []);  // eslint-disable-line
+  }, []); // eslint-disable-line
 
   // close dropdown on outside click
   useEffect(() => {
@@ -193,7 +194,11 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
               <button
                 type="button"
                 onClick={() => {
-                  onManage(activeWorkspace.id, activeWorkspace.name);
+                  onManage(
+                    activeWorkspace.id,
+                    activeWorkspace.name,
+                    activeWorkspace.role as Role,
+                  );
                   setOpen(false);
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/40 transition-colors hover:bg-white/5 hover:text-white/70"

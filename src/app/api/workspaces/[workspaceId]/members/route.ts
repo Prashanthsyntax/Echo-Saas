@@ -84,7 +84,7 @@ export async function DELETE(
     },
   });
 
-  if (!requester || requester.role === "MEMBER") {
+  if (!requester || requester.role === "VIEWER" || requester.role === "EDITOR") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

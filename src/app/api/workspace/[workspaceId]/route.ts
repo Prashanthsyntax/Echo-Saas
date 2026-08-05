@@ -36,7 +36,7 @@ export async function PATCH(
     },
   });
 
-  if (!membership || membership.role === "MEMBER") {
+  if (!membership || membership.role === "VIEWER") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -1,40 +1,48 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ workspaceId: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { workspaceId } = await params;
-  const { email } = await req.json();
+
+  const result = await requireWorkspacePermission(workspaceId, "INVITE_MEMBER");
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  const { email, role } = await req.json();
 
   if (!email?.trim()) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const membership = await db.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+  // get workspace settings for default role
+  const settings = await db.workspaceSettings.findUnique({
+    where: { workspaceId },
   });
 
-  if (!membership || membership.role === "MEMBER") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const inviteRole = role ?? settings?.defaultRole ?? "VIEWER";
 
   // check if already a member
-  const existingUser = await db.user.findUnique({ where: { email: email.trim() } });
+  const existingUser = await db.user.findUnique({
+    where: { email: email.trim() },
+  });
+
   if (existingUser) {
     const existingMembership = await db.membership.findUnique({
-      where: { userId_workspaceId: { userId: existingUser.id, workspaceId } },
+      where: {
+        userId_workspaceId: { userId: existingUser.id, workspaceId },
+      },
     });
     if (existingMembership) {
-      return NextResponse.json({ error: "User is already a member" }, { status: 400 });
+      return NextResponse.json(
+        { error: "User is already a member of this workspace" },
+        { status: 400 }
+      );
     }
   }
 
@@ -42,8 +50,12 @@ export async function POST(
   const existingInvite = await db.invite.findFirst({
     where: { workspaceId, email: email.trim(), accepted: false },
   });
+
   if (existingInvite) {
-    return NextResponse.json({ error: "Invite already sent to this email" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invite already sent to this email" },
+      { status: 400 }
+    );
   }
 
   const expiresAt = new Date();
@@ -53,8 +65,17 @@ export async function POST(
     data: {
       email: email.trim(),
       workspaceId,
+      role: inviteRole,
       expiresAt,
     },
+  });
+
+  await logActivity({
+    workspaceId,
+    userId: result.user.id,
+    type: "INVITE_SENT",
+    description: `Invited ${email.trim()} as ${inviteRole}`,
+    metadata: { email: email.trim(), role: inviteRole },
   });
 
   return NextResponse.json({

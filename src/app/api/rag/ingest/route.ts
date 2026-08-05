@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity";
+import { db } from "@/lib/db";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -44,7 +46,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    return NextResponse.json(await res.json());
+    const data = await res.json();
+
+    const user = await db.user.findUnique({ where: { clerkId: userId } });
+    const workspaceId = req.headers.get("x-workspace-id");
+    if (user && workspaceId) {
+      await logActivity({
+        workspaceId,
+        userId: user.id,
+        type: "DOCUMENT_INGESTED",
+        description: `uploaded document "${file.name}"`,
+        metadata: { filename: file.name, chunks: data.ingested ?? 0 },
+      });
+    }
+
+    return NextResponse.json(data);
   }
 
   // JSON body — URL or text
