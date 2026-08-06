@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ElectronNav } from "@/components/shared/electron-nav";
 import { WorkspaceProvider } from "@/lib/workspace-context";
+import { PresenceAvatars } from "@/components/shared/presence-avatars";
 
 export default function DashboardLayout({
   children,
@@ -29,10 +30,17 @@ export default function DashboardLayout({
           <Sidebar />
         </div>
 
-        <main className="relative z-10 flex-1 overflow-y-auto">
-          <ElectronNav />
-          {children}
-        </main>
+        <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
+          {/* top bar with presence */}
+          <div className="flex h-10 shrink-0 items-center justify-end border-b border-white/5 px-4">
+            <PresenceAvatars />
+          </div>
+
+          <main className="flex-1 overflow-y-auto">
+            <ElectronNav />
+            {children}
+          </main>
+        </div>
       </div>
     </WorkspaceProvider>
   );

@@ -60,6 +60,7 @@ model User {
   knowledgeGraphs KnowledgeGraph[]
   canvasStates    CanvasState[]
   activityLogs    ActivityLog[]
+  presenceSessions PresenceSession[]
 }
 
 model Workspace {
@@ -80,6 +81,7 @@ model Workspace {
   canvasStates     CanvasState[]
   activityLogs     ActivityLog[]
   settings         WorkspaceSettings?
+  presenceSessions PresenceSession[]
 }
 
 model Membership {
@@ -316,4 +318,19 @@ model WorkspaceSettings {
 
   workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId       String    @unique
+}
+
+model PresenceSession {
+  id          String   @id @default(cuid())
+  page        String   // "/dashboard", "/canvas", "/chat", etc.
+  lastSeen    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  @@unique([userId, workspaceId])
 }
