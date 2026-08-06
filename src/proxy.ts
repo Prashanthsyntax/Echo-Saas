@@ -9,11 +9,11 @@ const isProtectedRoute = createRouteMatcher([
   "/knowledge(.*)",
   "/chat(.*)",
   "/agents(.*)",
-  "/settings(.*)",
+  "/settings(.*)",       // already covers /settings/workspace
   "/billing(.*)",
   "/api/rag(.*)",
   "/api/agents(.*)",
-  "/api/presence(.*)",    // add this
+  "/api/presence(.*)",
   "/api/canvas(.*)",
   "/api/knowledge(.*)",
   "/api/chat(.*)",

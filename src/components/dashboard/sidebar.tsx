@@ -10,17 +10,9 @@ import { UserProfileModal } from "./user-profile-modal";
 import { WorkspaceManager } from "./workspace-manager";
 import { useState } from "react";
 import {
-  LayoutDashboard,
-  LayoutGrid,
-  Video,
-  PenTool,
-  Workflow,
-  Network,
-  MessageSquare,
-  Bot,
-  Settings,
-  CreditCard,
-  Plus,
+  LayoutDashboard, LayoutGrid, Video, PenTool,
+  Workflow, Network, MessageSquare, Bot,
+  Settings, Shield, CreditCard, Plus,
 } from "lucide-react";
 import { Role } from "@prisma/client";
 
@@ -34,6 +26,7 @@ const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings/workspace", label: "Workspace", icon: Shield },  // add this
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
 

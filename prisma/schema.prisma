@@ -66,6 +66,7 @@ model User {
 model Workspace {
   id               String             @id @default(cuid())
   name             String
+  description      String?
   plan             Plan               @default(FREE)
   stripeCustomerId String?            @unique
   createdAt        DateTime           @default(now())
