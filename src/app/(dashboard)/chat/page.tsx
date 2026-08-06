@@ -72,16 +72,19 @@ export default function ChatPage() {
 
   const fetchDocuments = useCallback(async () => {
     try {
-      const res = await fetch("/api/rag/documents");
+      const res = await fetch("/api/rag/documents", {
+        headers: {
+          "x-workspace-id": workspaceId ?? "", // add this
+        },
+      });
       const data = await res.json();
       setDocuments(data.documents ?? []);
     } catch {
     } finally {
       setDocsLoading(false);
     }
-  }, []);
+  }, [workspaceId]);
 
-  
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDocuments();
@@ -124,7 +127,10 @@ export default function ChatPage() {
     try {
       const res = await fetch("/api/rag/query", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-workspace-id": workspaceId ?? "", // add this
+        },
         body: JSON.stringify({
           question: content,
           history: messages.slice(-6).map((m) => ({
@@ -291,7 +297,10 @@ export default function ChatPage() {
       const res = await fetch("/api/rag/documents", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({
+          source,
+          workspaceId, // add this
+        }),
       });
       if (res.ok) {
         setDocuments((prev) => prev.filter((d) => d.source !== source));

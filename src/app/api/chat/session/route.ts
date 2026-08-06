@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-// GET — load existing session + all messages for current workspace
+// GET — load workspace shared session
 export async function GET(req: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -11,7 +11,6 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
-
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
@@ -19,11 +18,32 @@ export async function GET(req: Request) {
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) return NextResponse.json({ session: null, messages: [] });
 
-  const session = await db.chatSession.findUnique({
+  // verify membership
+  const membership = await db.membership.findUnique({
     where: { userId_workspaceId: { userId: user.id, workspaceId } },
+  });
+  if (!membership) {
+    return NextResponse.json({ error: "Not a member" }, { status: 403 });
+  }
+
+  // find workspace-level session — not user-level
+  // we use the workspace owner's session as the shared one
+  // OR create one shared session per workspace
+  const session = await db.chatSession.findFirst({
+    where: { workspaceId },
     include: {
       messages: {
         orderBy: { createdAt: "asc" },
+        include: {
+          // include sender info for shared chat
+          session: {
+            include: {
+              user: {
+                select: { id: true, name: true, imageUrl: true },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -46,7 +66,7 @@ export async function GET(req: Request) {
   });
 }
 
-// POST — create session if not exists, return sessionId
+// POST — get or create workspace shared session
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -61,16 +81,28 @@ export async function POST(req: Request) {
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const session = await db.chatSession.upsert({
+  const membership = await db.membership.findUnique({
     where: { userId_workspaceId: { userId: user.id, workspaceId } },
-    update: { updatedAt: new Date() },
-    create: { userId: user.id, workspaceId },
   });
+  if (!membership) {
+    return NextResponse.json({ error: "Not a member" }, { status: 403 });
+  }
+
+  // find existing workspace session or create one
+  let session = await db.chatSession.findFirst({
+    where: { workspaceId },
+  });
+
+  if (!session) {
+    session = await db.chatSession.create({
+      data: { userId: user.id, workspaceId },
+    });
+  }
 
   return NextResponse.json({ sessionId: session.id });
 }
 
-// DELETE — clear all messages for current workspace session
+// DELETE — clear workspace chat (OWNER/ADMIN only)
 export async function DELETE(req: Request) {
   const { userId } = await auth();
   if (!userId) {
@@ -78,14 +110,19 @@ export async function DELETE(req: Request) {
   }
 
   const { workspaceId } = await req.json();
-
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const session = await db.chatSession.findUnique({
+  // only OWNER/ADMIN can clear workspace chat
+  const membership = await db.membership.findUnique({
     where: { userId_workspaceId: { userId: user.id, workspaceId } },
   });
 
+  if (!membership || membership.role === "EDITOR" || membership.role === "VIEWER") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const session = await db.chatSession.findFirst({ where: { workspaceId } });
   if (session) {
     await db.chatMessage.deleteMany({ where: { sessionId: session.id } });
   }

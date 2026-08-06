@@ -41,7 +41,7 @@ export async function POST(req: Request) {
       take: 20,
     });
     boostSources.push(
-      ...scores.map((s) => ({ source: s.sourceDoc, score: s.score }))
+      ...scores.map((s) => ({ source: s.sourceDoc, score: s.score })),
     );
   }
 
@@ -64,11 +64,16 @@ export async function POST(req: Request) {
   }
 
   // 3. retrieve with adaptive scoring
+  // with workspace-scoped namespace:
+  const workspaceId = req.headers.get("x-workspace-id");
+  const ragNamespace = workspaceId ?? userId;
+
+  // then use ragNamespace everywhere userId was used in the Chroma calls
   const retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      user_id: userId,
+      user_id: ragNamespace, // workspace-scoped
       question: expandedQuestion,
       top_k: 8,
       boost_sources: boostSources,
@@ -78,7 +83,7 @@ export async function POST(req: Request) {
   if (!retrievalRes.ok) {
     return NextResponse.json(
       { error: "Retrieval service unavailable" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
@@ -132,7 +137,7 @@ export async function POST(req: Request) {
       decrypted,
       SYSTEM_PROMPT,
       history,
-      userMessage
+      userMessage,
     );
     answer = result.answer;
     modelUsed = `${agentKey.provider} / ${agentKey.model}`;
@@ -162,7 +167,7 @@ async function callAgentModel(
   apiKey: string,
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
-  userMessage: string
+  userMessage: string,
 ): Promise<{ answer: string }> {
   const messages = [
     ...history.slice(-6),
@@ -219,7 +224,7 @@ async function callAgentModel(
             parts: [{ text: m.content }],
           })),
         }),
-      }
+      },
     );
     const data = await res.json();
     return {

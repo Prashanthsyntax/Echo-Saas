@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { logActivity } from "@/lib/activity";
 import { db } from "@/lib/db";
+import { hasPermission } from "@/lib/permissions";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -21,18 +21,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const workspaceId = req.headers.get("x-workspace-id");
+
+  // check permission
+  if (workspaceId) {
+    const user = await db.user.findUnique({ where: { clerkId: userId } });
+    if (user) {
+      const membership = await db.membership.findUnique({
+        where: { userId_workspaceId: { userId: user.id, workspaceId } },
+      });
+      if (membership && !hasPermission(membership.role, "INGEST_DOCUMENTS")) {
+        return NextResponse.json(
+          { error: "Your role does not allow document ingestion" },
+          { status: 403 }
+        );
+      }
+    }
+  }
+
+  // use workspaceId as the RAG namespace — so all members share documents
+  // fall back to userId for personal use outside a workspace
+  const ragNamespace = workspaceId ?? userId;
+
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData();
     const file = formData.get("file") as File;
-
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const upstream = new FormData();
-    upstream.append("user_id", userId);
+    upstream.append("user_id", ragNamespace); // workspace namespace
     upstream.append("file", file, file.name);
 
     const res = await fetch(`${CHROMA_URL}/ingest/file`, {
@@ -42,40 +63,23 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "File ingestion failed");
-      console.error("Chroma file ingest error:", errorMsg);
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    const data = await res.json();
-
-    const user = await db.user.findUnique({ where: { clerkId: userId } });
-    const workspaceId = req.headers.get("x-workspace-id");
-    if (user && workspaceId) {
-      await logActivity({
-        workspaceId,
-        userId: user.id,
-        type: "DOCUMENT_INGESTED",
-        description: `uploaded document "${file.name}"`,
-        metadata: { filename: file.name, chunks: data.ingested ?? 0 },
-      });
-    }
-
-    return NextResponse.json(data);
+    return NextResponse.json(await res.json());
   }
 
-  // JSON body — URL or text
   const body = await req.json();
 
   if (body.url) {
     const res = await fetch(`${CHROMA_URL}/ingest/url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, url: body.url }),
+      body: JSON.stringify({ user_id: ragNamespace, url: body.url }),
     });
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "URL ingestion failed");
-      console.error("Chroma URL ingest error:", errorMsg);
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
@@ -87,7 +91,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: userId,
+        user_id: ragNamespace,
         content: body.content,
         source: body.source,
         source_type: body.source_type ?? "text",
@@ -96,7 +100,6 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "Text ingestion failed");
-      console.error("Chroma text ingest error:", errorMsg);
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 

@@ -6,6 +6,7 @@ import { CanvasToolbar, type CanvasTool } from "./canvas-toolbar";
 import { PropertiesPanel } from "./properties-panel";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import { Loader2, Trash2 } from "lucide-react";
+import { useWorkspace } from "@/lib/workspace-context";
 
 export function CanvasBoard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,22 +27,41 @@ export function CanvasBoard() {
   const fillColorRef = useRef(fillColor);
   const strokeWidthRef = useRef(strokeWidth);
 
-  useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
-  useEffect(() => { strokeColorRef.current = strokeColor; }, [strokeColor]);
-  useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
-  useEffect(() => { strokeWidthRef.current = strokeWidth; }, [strokeWidth]);
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+  useEffect(() => {
+    strokeColorRef.current = strokeColor;
+  }, [strokeColor]);
+  useEffect(() => {
+    fillColorRef.current = fillColor;
+  }, [fillColor]);
+  useEffect(() => {
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeWidth]);
 
   const isDrawingShape = useRef(false);
   const startPoint = useRef({ x: 0, y: 0 });
   const activeShape = useRef<any>(null);
 
-  const {
-    savedState,
-    loading,
-    saving,
-    saveCanvasState,
-    clearCanvasState,
-  } = useCanvasPersistence();
+  const { workspaceId } = useWorkspace();
+  const [canEdit, setCanEdit] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch("/api/workspaces")
+      .then((r) => r.json())
+      .then((data) => {
+        const ws = data.workspaces?.find(
+          (w: { id: string }) => w.id === workspaceId,
+        );
+        const role = ws?.role ?? "VIEWER";
+        setCanEdit(role === "OWNER" || role === "ADMIN" || role === "EDITOR");
+      });
+  }, [workspaceId]);
+
+  const { savedState, loading, saving, saveCanvasState, clearCanvasState } =
+    useCanvasPersistence();
 
   // trigger save on any canvas change
   const triggerSave = useCallback(() => {
@@ -54,11 +74,7 @@ export function CanvasBoard() {
     const count = canvas.getObjects().length;
 
     setObjectCount(count);
-    saveCanvasState(
-      json,
-      { x: vpt[4], y: vpt[5], zoom: currentZoom },
-      count
-    );
+    saveCanvasState(json, { x: vpt[4], y: vpt[5], zoom: currentZoom }, count);
   }, [saveCanvasState]);
 
   // restore saved canvas state
@@ -90,80 +106,101 @@ export function CanvasBoard() {
         isRestoringRef.current = false;
       }
     },
-    [savedState]
+    [savedState],
   );
 
-  const handleMouseDown = useCallback((opt: any, canvas: any) => {
-    const tool = activeToolRef.current;
-    if (tool === "select" || tool === "draw") return;
+  const handleMouseDown = useCallback(
+    (opt: any, canvas: any) => {
+      const tool = activeToolRef.current;
+      if (tool === "select" || tool === "draw") return;
 
-    const { Rect, Ellipse, Line, IText, Group } = canvas._fabricClasses;
-    const pointer = canvas.getScenePoint(opt.e);
-    startPoint.current = { x: pointer.x, y: pointer.y };
-    isDrawingShape.current = true;
+      const { Rect, Ellipse, Line, IText, Group } = canvas._fabricClasses;
+      const pointer = canvas.getScenePoint(opt.e);
+      startPoint.current = { x: pointer.x, y: pointer.y };
+      isDrawingShape.current = true;
 
-    const sc = strokeColorRef.current;
-    const fc = fillColorRef.current;
-    const sw = strokeWidthRef.current;
-    let shape: any = null;
+      const sc = strokeColorRef.current;
+      const fc = fillColorRef.current;
+      const sw = strokeWidthRef.current;
+      let shape: any = null;
 
-    if (tool === "rect") {
-      shape = new Rect({
-        left: pointer.x, top: pointer.y,
-        width: 0, height: 0,
-        stroke: sc, fill: fc === "transparent" ? "" : fc,
-        strokeWidth: sw, selectable: false,
-      });
-    } else if (tool === "circle") {
-      shape = new Ellipse({
-        left: pointer.x, top: pointer.y,
-        rx: 0, ry: 0,
-        stroke: sc, fill: fc === "transparent" ? "" : fc,
-        strokeWidth: sw, selectable: false,
-      });
-    } else if (tool === "line") {
-      shape = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-        stroke: sc, strokeWidth: sw, selectable: false,
-      });
-    } else if (tool === "text") {
-      const text = new IText("Click to edit", {
-        left: pointer.x, top: pointer.y,
-        fill: sc, fontSize: 18,
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-      });
-      canvas.add(text);
-      canvas.setActiveObject(text);
-      text.enterEditing();
-      setActiveTool("select");
-      isDrawingShape.current = false;
-      triggerSave();
-      return;
-    } else if (tool === "sticky") {
-      const bg = new Rect({
-        width: 180, height: 140,
-        fill: "#FDE68A", rx: 8, ry: 8,
-      });
-      const label = new IText("Sticky note", {
-        left: 12, top: 12,
-        fill: "#1C1917", fontSize: 14,
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-        width: 156,
-      });
-      const group = new Group([bg, label], {
-        left: pointer.x, top: pointer.y,
-      });
-      canvas.add(group);
-      setActiveTool("select");
-      isDrawingShape.current = false;
-      triggerSave();
-      return;
-    }
+      if (tool === "rect") {
+        shape = new Rect({
+          left: pointer.x,
+          top: pointer.y,
+          width: 0,
+          height: 0,
+          stroke: sc,
+          fill: fc === "transparent" ? "" : fc,
+          strokeWidth: sw,
+          selectable: false,
+        });
+      } else if (tool === "circle") {
+        shape = new Ellipse({
+          left: pointer.x,
+          top: pointer.y,
+          rx: 0,
+          ry: 0,
+          stroke: sc,
+          fill: fc === "transparent" ? "" : fc,
+          strokeWidth: sw,
+          selectable: false,
+        });
+      } else if (tool === "line") {
+        shape = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+          stroke: sc,
+          strokeWidth: sw,
+          selectable: false,
+        });
+      } else if (tool === "text") {
+        const text = new IText("Click to edit", {
+          left: pointer.x,
+          top: pointer.y,
+          fill: sc,
+          fontSize: 18,
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        });
+        canvas.add(text);
+        canvas.setActiveObject(text);
+        text.enterEditing();
+        setActiveTool("select");
+        isDrawingShape.current = false;
+        triggerSave();
+        return;
+      } else if (tool === "sticky") {
+        const bg = new Rect({
+          width: 180,
+          height: 140,
+          fill: "#FDE68A",
+          rx: 8,
+          ry: 8,
+        });
+        const label = new IText("Sticky note", {
+          left: 12,
+          top: 12,
+          fill: "#1C1917",
+          fontSize: 14,
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          width: 156,
+        });
+        const group = new Group([bg, label], {
+          left: pointer.x,
+          top: pointer.y,
+        });
+        canvas.add(group);
+        setActiveTool("select");
+        isDrawingShape.current = false;
+        triggerSave();
+        return;
+      }
 
-    if (shape) {
-      canvas.add(shape);
-      activeShape.current = shape;
-    }
-  }, [triggerSave]);
+      if (shape) {
+        canvas.add(shape);
+        activeShape.current = shape;
+      }
+    },
+    [triggerSave],
+  );
 
   const handleMouseMove = useCallback((opt: any, canvas: any) => {
     if (!isDrawingShape.current || !activeShape.current) return;
@@ -175,12 +212,15 @@ export function CanvasBoard() {
 
     if (tool === "rect") {
       shape.set({
-        left: Math.min(sx, pointer.x), top: Math.min(sy, pointer.y),
-        width: Math.abs(pointer.x - sx), height: Math.abs(pointer.y - sy),
+        left: Math.min(sx, pointer.x),
+        top: Math.min(sy, pointer.y),
+        width: Math.abs(pointer.x - sx),
+        height: Math.abs(pointer.y - sy),
       });
     } else if (tool === "circle") {
       shape.set({
-        left: Math.min(sx, pointer.x), top: Math.min(sy, pointer.y),
+        left: Math.min(sx, pointer.x),
+        top: Math.min(sy, pointer.y),
         rx: Math.abs(pointer.x - sx) / 2,
         ry: Math.abs(pointer.y - sy) / 2,
       });
@@ -190,17 +230,20 @@ export function CanvasBoard() {
     canvas.requestRenderAll();
   }, []);
 
-  const handleMouseUp = useCallback((canvas: any) => {
-    if (!isDrawingShape.current) return;
-    isDrawingShape.current = false;
-    if (activeShape.current) {
-      activeShape.current.set({ selectable: true });
-      canvas.setActiveObject(activeShape.current);
-      activeShape.current = null;
-    }
-    setActiveTool("select");
-    triggerSave();
-  }, [triggerSave]);
+  const handleMouseUp = useCallback(
+    (canvas: any) => {
+      if (!isDrawingShape.current) return;
+      isDrawingShape.current = false;
+      if (activeShape.current) {
+        activeShape.current.set({ selectable: true });
+        canvas.setActiveObject(activeShape.current);
+        activeShape.current = null;
+      }
+      setActiveTool("select");
+      triggerSave();
+    },
+    [triggerSave],
+  );
 
   // initialize Fabric.js
   useEffect(() => {
@@ -213,7 +256,8 @@ export function CanvasBoard() {
     let ro: ResizeObserver | null = null;
 
     import("fabric").then(async (fabricModule) => {
-      const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } = fabricModule;
+      const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } =
+        fabricModule;
       const container = containerRef.current;
       const canvasEl = canvasRef.current;
       if (!container || !canvasEl) return;
@@ -312,7 +356,9 @@ export function CanvasBoard() {
     return () => {
       ro?.disconnect();
       if (canvas) {
-        try { canvas.dispose(); } catch {}
+        try {
+          canvas.dispose();
+        } catch {}
       }
       fabricRef.current = null;
       initializingRef.current = false;
@@ -396,10 +442,16 @@ export function CanvasBoard() {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
-      ) return;
+      )
+        return;
       const map: Record<string, CanvasTool> = {
-        v: "select", d: "draw", r: "rect",
-        c: "circle", l: "line", t: "text", s: "sticky",
+        v: "select",
+        d: "draw",
+        r: "rect",
+        c: "circle",
+        l: "line",
+        t: "text",
+        s: "sticky",
       };
       if (map[e.key]) setActiveTool(map[e.key] as CanvasTool);
       if (e.key === "Delete" || e.key === "Backspace") handleDelete();
@@ -441,6 +493,14 @@ export function CanvasBoard() {
             )}
           </div>
         </div>
+
+        {!canEdit && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5">
+            <span className="text-[10px] text-white/40">
+              👁 View only — your role cannot edit this canvas
+            </span>
+          </div>
+        )}
 
         <CanvasToolbar
           activeTool={activeTool}

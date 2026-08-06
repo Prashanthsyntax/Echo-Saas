@@ -58,8 +58,7 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
     OWNER: 4,
     ADMIN: 3,
     EDITOR: 2,
-    VIEWER: 1,
-    MEMBER: 0
+    VIEWER: 1
 };
 
 // Check if roleA outranks roleB
@@ -72,8 +71,7 @@ export const ROLE_COLORS: Record<Role, string> = {
     OWNER: "bg-amber-500/20 text-amber-400 border-amber-500/30",
     ADMIN: "bg-violet-500/20 text-violet-400 border-violet-500/30",
     EDITOR: "bg-sky-500/20 text-sky-400 border-sky-500/30",
-    VIEWER: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-    MEMBER: ""
+    VIEWER: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
 };
 
 // Role descriptions for UI
@@ -81,6 +79,5 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
     OWNER: "Full control — manage members, settings, and all content",
     ADMIN: "Manage members and all content, cannot delete workspace",
     EDITOR: "Create and edit content, cannot manage members",
-    VIEWER: "View-only access to all workspace content",
-    MEMBER: ""
+    VIEWER: "View-only access to all workspace content"
 };
