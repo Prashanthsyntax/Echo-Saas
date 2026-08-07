@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity */
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   Bot,
   User,
@@ -16,8 +18,6 @@ import {
   Trash2,
   Database,
   Sparkles,
-  CheckCircle2,
-  AlertCircle,
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
@@ -32,11 +32,6 @@ interface Document {
   source: string;
   type: string;
   chunks: number;
-}
-
-interface IngestStatus {
-  state: "idle" | "loading" | "success" | "error";
-  message: string;
 }
 
 export default function ChatPage() {
@@ -58,10 +53,8 @@ export default function ChatPage() {
   const [querying, setQuerying] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
-  const [ingestStatus, setIngestStatus] = useState<IngestStatus>({
-    state: "idle",
-    message: "",
-  });
+  const [isUploading, setIsUploading] = useState(false);
+  const [ragStatus, setRagStatus] = useState<"unknown" | "online" | "offline">("unknown");
   const [urlInput, setUrlInput] = useState("");
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showDocPanel, setShowDocPanel] = useState(true);
@@ -74,7 +67,7 @@ export default function ChatPage() {
     try {
       const res = await fetch("/api/rag/documents", {
         headers: {
-          "x-workspace-id": workspaceId ?? "", // add this
+          "x-workspace-id": workspaceId ?? "",
         },
       });
       const data = await res.json();
@@ -94,6 +87,13 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, querying]);
 
+  useEffect(() => {
+    fetch("/api/rag/health")
+      .then((r) => r.json())
+      .then((data) => setRagStatus(data.ok ? "online" : "offline"))
+      .catch(() => setRagStatus("offline"));
+  }, []);
+
   const sendMessage = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content || querying) return;
@@ -102,7 +102,6 @@ export default function ChatPage() {
 
     // 1. optimistically add user message to UI
     const tempUserMsg: PersistedMessage = {
-      // eslint-disable-next-line react-hooks/purity
       id: `temp_user_${Date.now()}`,
       role: "user",
       content,
@@ -113,9 +112,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, tempUserMsg]);
 
     // 2. save user message to DB — get real ID back
-    const userMsgId = await saveUserMessage(content);
-
-    // replace temp ID with real DB ID
+    const userMsgId = await saveUserMessage(content).catch(() => null);
     if (userMsgId) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -129,7 +126,7 @@ export default function ChatPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-workspace-id": workspaceId ?? "", // add this
+          "x-workspace-id": workspaceId ?? "",
         },
         body: JSON.stringify({
           question: content,
@@ -140,11 +137,39 @@ export default function ChatPage() {
         }),
       });
 
+      // handle RAG service unavailable gracefully
+      if (res.status === 503) {
+        const data = await res.json();
+
+        // remove the user message from UI since we can't answer
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== tempUserMsg.id && m.id !== userMsgId),
+        );
+
+        toast.warning("echo-nemo-1.0 is warming up", {
+          description:
+            data.reason ??
+            "The RAG service is starting. Please wait 15 seconds and try again.",
+          duration: 8000,
+          action: {
+            label: "Retry",
+            onClick: () => sendMessage(content),
+          },
+        });
+
+        setQuerying(false);
+        setInput(content); // restore input so user doesn't lose their message
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
       const data = await res.json();
 
       // 3. optimistically add assistant message to UI
       const tempAssistantMsg: PersistedMessage = {
-        // eslint-disable-next-line react-hooks/purity
         id: `temp_assistant_${Date.now()}`,
         role: "assistant",
         content: data.answer ?? "No response.",
@@ -164,9 +189,8 @@ export default function ChatPage() {
           contextUsed: tempAssistantMsg.contextUsed,
           chunkIds: tempAssistantMsg.chunkIds,
         },
-      );
+      ).catch(() => null);
 
-      // replace temp ID with real DB ID
       if (assistantMsgId) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -174,18 +198,25 @@ export default function ChatPage() {
           ),
         );
       }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err_${Date.now()}`,
-          role: "assistant",
-          content: "Something went wrong. Please try again.",
-          sources: [],
-          contextUsed: false,
-          chunkIds: [],
+    } catch (err) {
+      // remove optimistic user message on hard failure
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== tempUserMsg.id && m.id !== userMsgId),
+      );
+
+      toast.error("Failed to get a response", {
+        description:
+          err instanceof Error && err.message.includes("fetch")
+            ? "Network error — check your connection."
+            : "Something went wrong. Please try again.",
+        duration: 6000,
+        action: {
+          label: "Retry",
+          onClick: () => sendMessage(content),
         },
-      ]);
+      });
+
+      setInput(content); // restore input
     } finally {
       setQuerying(false);
     }
@@ -223,90 +254,160 @@ export default function ChatPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIngestStatus({
-      state: "loading",
-      message: `Processing ${file.name}...`,
-    });
+
+    setIsUploading(true);
+    const toastId = toast.loading(`Processing ${file.name}...`);
+
     const formData = new FormData();
     formData.append("file", file);
+
     try {
       const res = await fetch("/api/rag/ingest", {
         method: "POST",
         body: formData,
-        headers: {
-          "x-workspace-id": workspaceId ?? "",
-        },
+        headers: { "x-workspace-id": workspaceId ?? "" },
       });
+
       const data = await res.json();
-      if (!res.ok) {
-        setIngestStatus({
-          state: "error",
-          message: data.error ?? "Upload failed",
+
+      if (res.status === 503) {
+        toast.warning("RAG service unavailable", {
+          id: toastId,
+          description: data.reason ?? "Try uploading again in 15 seconds.",
+          duration: 8000,
         });
         return;
       }
-      setIngestStatus({
-        state: "success",
-        message: `✓ ${file.name} — ${data.ingested} chunks indexed`,
+
+      if (!res.ok) {
+        toast.error("Upload failed", {
+          id: toastId,
+          description: data.error ?? "Could not process this file.",
+          duration: 6000,
+        });
+        return;
+      }
+
+      toast.success(`${file.name} indexed`, {
+        id: toastId,
+        description: `${data.ingested} chunks added to your knowledge base.`,
+        duration: 4000,
       });
+
       await fetchDocuments();
-      setTimeout(() => setIngestStatus({ state: "idle", message: "" }), 4000);
     } catch {
-      setIngestStatus({
-        state: "error",
-        message: "Upload failed — is the RAG service running?",
+      toast.error("Upload failed", {
+        id: toastId,
+        description: "Network error — check your connection and try again.",
+        duration: 6000,
       });
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
     }
-    e.target.value = "";
   };
 
   const handleUrlIngest = async () => {
     const url = urlInput.trim();
     if (!url) return;
-    setIngestStatus({ state: "loading", message: `Fetching ${url}...` });
+
     setShowUrlInput(false);
+    const toastId = toast.loading(`Fetching ${url}...`);
+
     try {
       const res = await fetch("/api/rag/ingest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-workspace-id": workspaceId ?? "",
+        },
         body: JSON.stringify({ url }),
       });
+
       const data = await res.json();
-      if (!res.ok) {
-        setIngestStatus({
-          state: "error",
-          message: data.error ?? "URL fetch failed",
+
+      if (res.status === 503) {
+        toast.warning("RAG service unavailable", {
+          id: toastId,
+          description: data.reason ?? "Try again in 15 seconds.",
+          duration: 8000,
         });
+        setShowUrlInput(true); // restore URL input
         return;
       }
-      setIngestStatus({
-        state: "success",
-        message: `✓ ${url} — ${data.ingested} chunks indexed`,
+
+      if (!res.ok) {
+        toast.error("Failed to fetch URL", {
+          id: toastId,
+          description: data.error ?? "The URL could not be read.",
+          duration: 6000,
+        });
+        setShowUrlInput(true);
+        return;
+      }
+
+      toast.success("URL indexed", {
+        id: toastId,
+        description: `${data.ingested} chunks from ${url} added to your knowledge base.`,
+        duration: 4000,
       });
+
       setUrlInput("");
       await fetchDocuments();
-      setTimeout(() => setIngestStatus({ state: "idle", message: "" }), 4000);
     } catch {
-      setIngestStatus({ state: "error", message: "Failed to fetch URL" });
+      toast.error("Network error", {
+        id: toastId,
+        description: "Could not reach the RAG service.",
+        duration: 6000,
+      });
+      setShowUrlInput(true);
     }
   };
 
   const handleDeleteDoc = async (source: string) => {
     if (!confirm(`Remove "${source}" from your knowledge base?`)) return;
+
+    const toastId = toast.loading(`Removing ${source}...`);
+
     try {
       const res = await fetch("/api/rag/documents", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source,
-          workspaceId, // add this
-        }),
+        body: JSON.stringify({ source, workspaceId }),
       });
-      if (res.ok) {
-        setDocuments((prev) => prev.filter((d) => d.source !== source));
-        await fetchDocuments();
+
+      if (res.status === 503) {
+        toast.warning("RAG service unavailable", {
+          id: toastId,
+          description: "Could not delete right now. Try again in 15 seconds.",
+          duration: 6000,
+        });
+        return;
       }
-    } catch {}
+
+      if (!res.ok) {
+        toast.error("Delete failed", {
+          id: toastId,
+          description: "Could not remove this document.",
+          duration: 6000,
+        });
+        return;
+      }
+
+      toast.success("Document removed", {
+        id: toastId,
+        duration: 3000,
+      });
+
+      setDocuments((prev) => prev.filter((d) => d.source !== source));
+      await fetchDocuments();
+    } catch {
+      toast.error("Network error", {
+        id: toastId,
+        description: "Could not reach the RAG service.",
+        duration: 6000,
+      });
+    }
   };
 
   const totalChunks = documents.reduce((sum, d) => sum + d.chunks, 0);
@@ -360,6 +461,30 @@ export default function ChatPage() {
             </Badge>
           </div>
 
+          {ragStatus === "offline" && (
+            <div
+              className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 p-3"
+              style={{ backgroundColor: "rgba(245,158,11,0.06)" }}
+            >
+              <span className="mt-0.5 text-sm">⚠️</span>
+              <div>
+                <p className="text-[11px] font-medium text-amber-400">
+                  RAG service is warming up
+                </p>
+                <p className="mt-0.5 text-[10px] text-amber-400/60">
+                  The knowledge base is starting on Render. Uploads and queries will work in ~15 seconds.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {ragStatus === "online" && (
+            <div className="mx-3 mt-3 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <p className="text-[10px] text-white/20">echo-nemo-1.0 ready</p>
+            </div>
+          )}
+
           <div className="space-y-2 border-b border-white/5 p-3">
             <input
               ref={fileInputRef}
@@ -370,7 +495,7 @@ export default function ChatPage() {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={ingestStatus.state === "loading"}
+              disabled={isUploading}
               className="flex w-full items-center gap-2 rounded-lg border border-white/8 bg-white/3 px-3 py-2.5 text-xs text-white/50 transition-colors hover:border-white/15 hover:text-white/80 disabled:opacity-40"
             >
               <Upload className="h-3.5 w-3.5 shrink-0" />
@@ -414,36 +539,6 @@ export default function ChatPage() {
                 <Link2 className="h-3.5 w-3.5 shrink-0" />
                 Add URL / webpage
               </button>
-            )}
-
-            {ingestStatus.state !== "idle" && (
-              <div
-                className={cn(
-                  "flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
-                  ingestStatus.state === "loading" && "text-white/40",
-                  ingestStatus.state === "success" && "text-emerald-400",
-                  ingestStatus.state === "error" && "text-red-400",
-                )}
-                style={{
-                  backgroundColor:
-                    ingestStatus.state === "success"
-                      ? "rgba(52,211,153,0.08)"
-                      : ingestStatus.state === "error"
-                        ? "rgba(239,68,68,0.08)"
-                        : "rgba(255,255,255,0.04)",
-                }}
-              >
-                {ingestStatus.state === "loading" && (
-                  <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" />
-                )}
-                {ingestStatus.state === "success" && (
-                  <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
-                )}
-                {ingestStatus.state === "error" && (
-                  <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
-                )}
-                <span>{ingestStatus.message}</span>
-              </div>
             )}
           </div>
 

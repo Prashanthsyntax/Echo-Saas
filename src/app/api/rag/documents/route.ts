@@ -1,7 +1,9 @@
-import { db } from "@/lib/db";
-import { hasPermission } from "@/lib/permissions";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import {
+  requireWorkspaceMembership,
+  requireWorkspacePermission,
+} from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -16,6 +18,13 @@ export async function GET(req: Request) {
     ?? null;
 
   const ragNamespace = workspaceId ?? userId;
+
+  if (workspaceId) {
+    const result = await requireWorkspaceMembership(workspaceId);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+  }
 
   try {
     const res = await fetch(`${CHROMA_URL}/documents`, {
@@ -56,16 +65,10 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "source required" }, { status: 400 });
   }
 
-  // check delete permission
   if (workspaceId) {
-    const user = await db.user.findUnique({ where: { clerkId: userId } });
-    if (user) {
-      const membership = await db.membership.findUnique({
-        where: { userId_workspaceId: { userId: user.id, workspaceId } },
-      });
-      if (membership && !hasPermission(membership.role, "DELETE_DOCUMENTS")) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    const result = await requireWorkspacePermission(workspaceId, "DELETE_DOCUMENTS");
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
   }
 

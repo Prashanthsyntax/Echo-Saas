@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useWorkspace } from "@/lib/workspace-context";
 
 export type RecordingStatus =
   | "idle"
@@ -21,6 +22,7 @@ interface UseRecorderOptions {
 }
 
 export function useRecorder(options: UseRecorderOptions = {}) {
+  const { workspaceId } = useWorkspace();
   const [status, setStatus] = useState<RecordingStatus>("idle");
   const [mode, setMode] = useState<RecordingMode>("screen");
   const [duration, setDuration] = useState(0);
@@ -43,14 +45,17 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     }
   }, []);
 
-  const startTimer = useCallback(() => {
-    durationRef.current = 0;
-    setDuration(0);
+  const startTimer = useCallback((reset = false) => {
+    if (reset) {
+      durationRef.current = 0;
+      setDuration(0);
+    }
+    stopTimer();
     timerRef.current = setInterval(() => {
       durationRef.current += 1;
       setDuration(durationRef.current);
     }, 1000);
-  }, []);
+  }, [stopTimer]);
 
   const stopAllTracks = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -73,6 +78,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       setStatus("uploading");
 
       try {
+        if (!workspaceId) {
+          throw new Error("Select a workspace before uploading a recording.");
+        }
+
         const ext = mimeType.includes("mp4") ? "mp4" : "webm";
         const filename = `recording-${Date.now()}.${ext}`;
 
@@ -87,6 +96,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
             contentType: mimeType,
             fileData: base64,
             duration: recordedDuration,
+            workspaceId,
           }),
         });
 
@@ -122,7 +132,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         handleError(msg);
       }
     },
-    [options, handleError],
+    [options, handleError, workspaceId],
   );
 
   const stopRecording = useCallback(() => {
@@ -247,7 +257,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
     recorder.start(1000);
     mediaRecorderRef.current = recorder;
-    startTimer();
+    startTimer(true);
     setStatus("recording");
   }, [startTimer, stopTimer, uploadVideo]);
 

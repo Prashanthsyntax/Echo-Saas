@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { NextResponse } from "next/server";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -9,13 +10,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  const { workspaceId } = await req.json().catch(() => ({}));
+  if (!workspaceId) {
+    return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
-  const workspace = await db.workspace.findFirst({
-    where: { memberships: { some: { userId: user.id } } },
+  const access = await requireWorkspacePermission(workspaceId, "UPDATE_SETTINGS");
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
     include: { subscription: true },
   });
 
@@ -38,9 +44,9 @@ export async function POST(req: Request) {
 
   if (!stripeCustomerId) {
     const customer = await stripe.customers.create({
-      email: user.email,
-      name: user.name ?? undefined,
-      metadata: { workspaceId: workspace.id, userId: user.id },
+      email: access.user.email,
+      name: access.user.name ?? undefined,
+      metadata: { workspaceId: workspace.id, userId: access.user.id },
     });
     stripeCustomerId = customer.id;
 

@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { requireWorkspacePermission } from "@/lib/workspace-auth";
 import { logActivity } from "@/lib/activity";
+import { outranks } from "@/lib/permissions";
+import type { Role } from "@prisma/client";
 
 export async function POST(
   req: Request,
@@ -14,7 +16,7 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const { email, role } = await req.json();
+  const { email, role } = await req.json() as { email?: string; role?: Role };
 
   if (!email?.trim()) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
@@ -26,6 +28,18 @@ export async function POST(
   });
 
   const inviteRole = role ?? settings?.defaultRole ?? "VIEWER";
+  const validInviteRoles: Role[] = ["ADMIN", "EDITOR", "VIEWER"];
+
+  if (!validInviteRoles.includes(inviteRole)) {
+    return NextResponse.json({ error: "Invalid invite role" }, { status: 400 });
+  }
+
+  if (!outranks(result.membership.role, inviteRole)) {
+    return NextResponse.json(
+      { error: "Cannot invite a member with equal or higher rank" },
+      { status: 403 }
+    );
+  }
 
   // check if already a member
   const existingUser = await db.user.findUnique({

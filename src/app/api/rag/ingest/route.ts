@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { hasPermission } from "@/lib/permissions";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -23,19 +22,10 @@ export async function POST(req: Request) {
 
   const workspaceId = req.headers.get("x-workspace-id");
 
-  // check permission
   if (workspaceId) {
-    const user = await db.user.findUnique({ where: { clerkId: userId } });
-    if (user) {
-      const membership = await db.membership.findUnique({
-        where: { userId_workspaceId: { userId: user.id, workspaceId } },
-      });
-      if (membership && !hasPermission(membership.role, "INGEST_DOCUMENTS")) {
-        return NextResponse.json(
-          { error: "Your role does not allow document ingestion" },
-          { status: 403 }
-        );
-      }
+    const result = await requireWorkspacePermission(workspaceId, "INGEST_DOCUMENTS");
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
   }
 

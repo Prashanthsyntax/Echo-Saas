@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   // Content — Canvas
   EDIT_CANVAS:        ["OWNER", "ADMIN", "EDITOR"] as Role[],
   VIEW_CANVAS:        ["OWNER", "ADMIN", "EDITOR", "VIEWER"] as Role[],
+  CLEAR_CANVAS:       ["OWNER", "ADMIN"] as Role[],
 
   // Content — Knowledge base
   INGEST_DOCUMENTS:   ["OWNER", "ADMIN", "EDITOR"] as Role[],

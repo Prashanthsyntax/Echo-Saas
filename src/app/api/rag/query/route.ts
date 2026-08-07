@@ -3,6 +3,7 @@ import { groq } from "@/lib/groq";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { NextResponse } from "next/server";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -68,21 +69,54 @@ export async function POST(req: Request) {
   const workspaceId = req.headers.get("x-workspace-id");
   const ragNamespace = workspaceId ?? userId;
 
+  if (workspaceId) {
+    const result = await requireWorkspacePermission(
+      workspaceId,
+      "QUERY_KNOWLEDGE",
+    );
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      );
+    }
+  }
+
   // then use ragNamespace everywhere userId was used in the Chroma calls
-  const retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      user_id: ragNamespace, // workspace-scoped
-      question: expandedQuestion,
-      top_k: 8,
-      boost_sources: boostSources,
-    }),
-  });
+  let retrievalRes: Response;
+  try {
+    retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: ragNamespace, // workspace-scoped
+        question: expandedQuestion,
+        top_k: 8,
+        boost_sources: boostSources,
+      }),
+    });
+  } catch {
+    // fetch itself threw — service is unreachable, likely cold-starting on Render
+    return NextResponse.json(
+      {
+        error: "rag_unavailable",
+        reason: "The RAG service is cold-starting on Render. Wait 15 seconds and try again.",
+        retryAfter: 15,
+      },
+      { status: 503 },
+    );
+  }
 
   if (!retrievalRes.ok) {
+    const isTimeout = retrievalRes.status === 504;
     return NextResponse.json(
-      { error: "Retrieval service unavailable" },
+      {
+        error: "rag_unavailable",
+        reason: isTimeout
+          ? "The RAG service timed out — it may be cold-starting. Try again in 15 seconds."
+          : "The RAG service is temporarily unavailable.",
+        retryAfter: 15,
+      },
       { status: 503 },
     );
   }

@@ -104,7 +104,7 @@ export async function DELETE(req: Request) {
   });
 
   // only OWNER/ADMIN can clear the shared canvas
-  if (!membership || !hasPermission(membership.role, "DELETE_DOCUMENTS")) {
+  if (!membership || !hasPermission(membership.role, "CLEAR_CANVAS")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

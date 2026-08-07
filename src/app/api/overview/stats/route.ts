@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireWorkspaceMembership } from "@/lib/workspace-auth";
 
 export async function GET(req: Request) {
   const { userId } = await auth();
@@ -9,6 +10,13 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
+
+  if (workspaceId) {
+    const result = await requireWorkspaceMembership(workspaceId);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+  }
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {

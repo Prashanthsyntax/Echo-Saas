@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireWorkspaceMembership } from "@/lib/workspace-auth";
 
 const PRESENCE_TIMEOUT_MS = 45 * 1000; // 45 seconds — removed if no heartbeat
 
@@ -16,6 +17,11 @@ export async function GET(req: Request) {
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
+  }
+
+  const result = await requireWorkspaceMembership(workspaceId);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   const encoder = new TextEncoder();
@@ -117,15 +123,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  const result = await requireWorkspaceMembership(workspaceId);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   await db.presenceSession.upsert({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+    where: { userId_workspaceId: { userId: result.user.id, workspaceId } },
     update: { page, lastSeen: new Date() },
-    create: { userId: user.id, workspaceId, page },
+    create: { userId: result.user.id, workspaceId, page },
   });
 
   return NextResponse.json({ success: true });
@@ -138,11 +144,13 @@ export async function DELETE(req: Request) {
 
   const { workspaceId } = await req.json().catch(() => ({}));
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user || !workspaceId) return NextResponse.json({ ok: true });
+  if (!workspaceId) return NextResponse.json({ ok: true });
+
+  const result = await requireWorkspaceMembership(workspaceId);
+  if (!result.ok) return NextResponse.json({ ok: true });
 
   await db.presenceSession.deleteMany({
-    where: { userId: user.id, workspaceId },
+    where: { userId: result.user.id, workspaceId },
   });
 
   return NextResponse.json({ success: true });

@@ -193,13 +193,16 @@ export function WorkspaceManager({
           body: JSON.stringify({ memberId, newRole }),
         }
       );
-      if (res.ok) {
-        setMembers((prev) =>
-          prev.map((m) =>
-            m.user.id === memberId ? { ...m, role: newRole } : m
-          )
-        );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setInviteError(data.error ?? "Failed to change role");
+        return;
       }
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.user.id === memberId ? { ...m, role: newRole } : m
+        )
+      );
     } finally {
       setChangingRole(null);
     }
@@ -207,11 +210,16 @@ export function WorkspaceManager({
 
   const handleRemoveMember = async (memberId: string) => {
     if (!confirm("Remove this member from the workspace?")) return;
-    await fetch(`/api/workspaces/${workspaceId}/members`, {
+    const res = await fetch(`/api/workspaces/${workspaceId}/members`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ memberId }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setInviteError(data.error ?? "Failed to remove member");
+      return;
+    }
     setMembers((prev) => prev.filter((m) => m.user.id !== memberId));
   };
 

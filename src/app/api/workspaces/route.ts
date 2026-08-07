@@ -41,6 +41,7 @@ export async function GET() {
               },
             },
           },
+          subscription: true,
           _count: { select: { videos: true } },
         },
       },
@@ -53,6 +54,7 @@ export async function GET() {
     name: m.workspace.name,
     plan: m.workspace.plan,
     role: m.role,
+    subscription: m.workspace.subscription,
     memberships: m.workspace.memberships,
     _count: m.workspace._count,
   }));
@@ -106,6 +108,7 @@ export async function POST(req: Request) {
           },
         },
       },
+      subscription: true,
       _count: { select: { videos: true } },
     },
   });
@@ -115,6 +118,7 @@ export async function POST(req: Request) {
     name: workspace.name,
     plan: workspace.plan,
     role: "OWNER",
+    subscription: workspace.subscription,
     memberships: workspace.memberships,
     _count: workspace._count,
   });

@@ -82,7 +82,7 @@ export async function POST(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user_id: userId,
+            user_id: video.workspaceId,
             content: transcript,
             source: `Echo video: ${title ?? video.title}`,
             source_type: "transcript",
