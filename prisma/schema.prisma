@@ -116,29 +116,41 @@ model Folder {
 }
 
 model Video {
-  id           String      @id @default(cuid())
-  title        String      @default("Untitled Video")
-  description  String?
-  url          String?
-  thumbnailUrl String?
-  duration     Int?
-  status       VideoStatus @default(UPLOADING)
-  transcript   String?
-  summary      String?
-  viewCount    Int         @default(0)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  title           String      @default("Untitled Video")
+  description     String?
+  url             String?
+  thumbnailUrl    String?
+  duration        Int?
+  status          VideoStatus @default(UPLOADING)
 
-  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  workspaceId  String
+  // existing transcript (raw whisper output)
+  transcript      String?     @db.Text
 
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
+  // new structured fields
+  structuredNotes String?     @db.Text  // full markdown notes
+  summary         String?               // 2-3 sentence summary
+  keyPoints       String[]              // bullet point key takeaways
+  actionItems     String[]              // action items extracted
+  topics          String[]              // main topic tags
+  language        String?               // detected language
+  speakerCount    Int?                  // estimated number of speakers
+  notesEditedAt   DateTime?             // when user last manually edited notes
 
-  folder       Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  folderId     String?
+  viewCount       Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  comments     Comment[]
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+
+  folder          Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folderId        String?
+
+  comments        Comment[]
 }
 
 model Comment {

@@ -63,6 +63,15 @@ export function CanvasBoard() {
   const { savedState, loading, saving, saveCanvasState, clearCanvasState } =
     useCanvasPersistence();
 
+  // Always-fresh ref to savedState. We read from this ref inside the init
+  // effect / restore function instead of depending on `savedState` directly,
+  // so that later updates to savedState (e.g. from clearCanvasState()) do
+  // NOT re-trigger canvas initialization/disposal.
+  const savedStateRef = useRef(savedState);
+  useEffect(() => {
+    savedStateRef.current = savedState;
+  }, [savedState]);
+
   // trigger save on any canvas change
   const triggerSave = useCallback(() => {
     const canvas = fabricRef.current;
@@ -77,37 +86,35 @@ export function CanvasBoard() {
     saveCanvasState(json, { x: vpt[4], y: vpt[5], zoom: currentZoom }, count);
   }, [saveCanvasState]);
 
-  // restore saved canvas state
-  const restoreCanvasState = useCallback(
-    async (canvas: any, fabricModule: any) => {
-      if (!savedState?.canvasData) return;
+  // restore saved canvas state (reads from ref, no savedState dependency)
+  const restoreCanvasState = useCallback(async (canvas: any) => {
+    const state = savedStateRef.current;
+    if (!state?.canvasData) return;
 
-      isRestoringRef.current = true;
-      try {
-        await new Promise<void>((resolve) => {
-          canvas.loadFromJSON(savedState.canvasData, () => {
-            canvas.requestRenderAll();
+    isRestoringRef.current = true;
+    try {
+      await new Promise<void>((resolve) => {
+        canvas.loadFromJSON(state.canvasData, () => {
+          canvas.requestRenderAll();
 
-            // restore viewport transform
-            const vpt = canvas.viewportTransform;
-            vpt[4] = savedState.viewportX;
-            vpt[5] = savedState.viewportY;
-            canvas.setZoom(savedState.zoomLevel);
-            canvas.requestRenderAll();
+          // restore viewport transform
+          const vpt = canvas.viewportTransform;
+          vpt[4] = state.viewportX;
+          vpt[5] = state.viewportY;
+          canvas.setZoom(state.zoomLevel);
+          canvas.requestRenderAll();
 
-            setZoom(savedState.zoomLevel);
-            setObjectCount(savedState.objectCount);
-            resolve();
-          });
+          setZoom(state.zoomLevel);
+          setObjectCount(state.objectCount);
+          resolve();
         });
-      } catch (err) {
-        console.error("Failed to restore canvas:", err);
-      } finally {
-        isRestoringRef.current = false;
-      }
-    },
-    [savedState],
-  );
+      });
+    } catch (err) {
+      console.error("Failed to restore canvas:", err);
+    } finally {
+      isRestoringRef.current = false;
+    }
+  }, []);
 
   const handleMouseDown = useCallback(
     (opt: any, canvas: any) => {
@@ -245,17 +252,26 @@ export function CanvasBoard() {
     [triggerSave],
   );
 
-  // initialize Fabric.js
+  // initialize Fabric.js — runs ONLY once loading finishes, not on every
+  // savedState change. This is the key fix: previously this effect listed
+  // `savedState` as a dependency, so calling clearCanvasState() (which
+  // updates savedState) re-ran this effect. The cleanup called
+  // canvas.dispose() (async in Fabric v6) while a brand new Canvas was
+  // immediately created on the same <canvas> element, leaving stale/partial
+  // DOM + duplicated event bindings behind — which is why the board looked
+  // present but stopped responding to any tool after "Clear all".
   useEffect(() => {
-    // wait for saved state to load before initializing
     if (loading) return;
     if (initializingRef.current) return;
     initializingRef.current = true;
 
     let canvas: any = null;
     let ro: ResizeObserver | null = null;
+    let cancelled = false;
 
     import("fabric").then(async (fabricModule) => {
+      if (cancelled) return;
+
       const { Canvas, Rect, Ellipse, Line, IText, Group, PencilBrush } =
         fabricModule;
       const container = containerRef.current;
@@ -281,9 +297,9 @@ export function CanvasBoard() {
       canvas.freeDrawingBrush.color = "#F4F4F5";
       canvas.freeDrawingBrush.width = 2;
 
-      // restore saved state if available
-      if (savedState?.canvasData) {
-        await restoreCanvasState(canvas, fabricModule);
+      // restore saved state if available (reads current savedStateRef)
+      if (savedStateRef.current?.canvasData) {
+        await restoreCanvasState(canvas);
       }
 
       let isPanning = false;
@@ -354,6 +370,7 @@ export function CanvasBoard() {
     });
 
     return () => {
+      cancelled = true;
       ro?.disconnect();
       if (canvas) {
         try {
@@ -363,7 +380,10 @@ export function CanvasBoard() {
       fabricRef.current = null;
       initializingRef.current = false;
     };
-  }, [loading, savedState]); // eslint-disable-line
+    // Only re-run when `loading` transitions (i.e. once, after the saved
+    // state has actually finished fetching). Do NOT add `savedState` here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // sync tool mode
   useEffect(() => {
@@ -393,6 +413,10 @@ export function CanvasBoard() {
     if (!confirm("Clear the entire canvas? This cannot be undone.")) return;
     const canvas = fabricRef.current;
     if (!canvas) return;
+
+    // Clear the live Fabric instance in place. Because the init effect no
+    // longer depends on `savedState`, calling clearCanvasState() below will
+    // NOT dispose/recreate this canvas — it stays fully interactive.
     canvas.clear();
     canvas.backgroundColor = "#0A0A0F";
     canvas.requestRenderAll();
