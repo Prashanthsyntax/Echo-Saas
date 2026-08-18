@@ -59,9 +59,21 @@ export default function ChatPage() {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showDocPanel, setShowDocPanel] = useState(true);
   const [feedbackSent, setFeedbackSent] = useState<Record<string, 1 | -1>>({});
+  const [userRole, setUserRole] = useState<string>("VIEWER");
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetch("/api/workspaces")
+      .then(r => r.json())
+      .then(d => {
+        const ws = d.workspaces?.find((w: any) => w.workspace.id === workspaceId);
+        if (ws) setUserRole(ws.role);
+      })
+      .catch(() => {});
+  }, [workspaceId]);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -616,11 +628,19 @@ export default function ChatPage() {
             >
               <Database className="h-3.5 w-3.5" />
               {showDocPanel ? "Hide" : "Show"} knowledge base
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          {(userRole === "OWNER" || userRole === "ADMIN") && messages.length > 0 && (
+            <button
+              onClick={handleClear}
+              className="rounded-lg border border-destructive/20 px-2.5 py-1 text-[10px] text-destructive/60 hover:bg-destructive/10 hover:text-destructive transition-colors mr-2"
+            >
+              Clear history
             </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge
-              className="gap-1 border-0 text-[10px]"
+          )}
+          <Badge
+            className="gap-1 border-0 text-[10px]"
               style={{
                 backgroundColor: "rgba(139,92,246,0.12)",
                 color: "#a78bfa",

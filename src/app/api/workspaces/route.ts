@@ -59,7 +59,9 @@ export async function GET() {
     _count: m.workspace._count,
   }));
 
-  return NextResponse.json({ workspaces });
+  return NextResponse.json({ workspaces }, {
+    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+  });
 }
 
 export async function POST(req: Request) {

@@ -9,9 +9,15 @@ import { WorkspaceForm } from "@/components/dashboard/workspace-form";
 
 
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ workspaceId?: string }>;
+}) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  const { workspaceId } = await searchParams;
 
   const clerkUser = await currentUser();
   if (!clerkUser) redirect("/sign-in");
@@ -33,7 +39,10 @@ export default async function SettingsPage() {
   }
 
   const workspace = await db.workspace.findFirst({
-    where: { memberships: { some: { userId: user.id } } },
+    where: {
+      id: workspaceId || undefined,
+      memberships: { some: { userId: user.id } },
+    },
   });
 
   return (

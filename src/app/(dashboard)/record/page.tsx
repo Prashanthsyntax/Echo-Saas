@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 
 const modes = [
@@ -140,7 +141,7 @@ export default function RecordPage() {
                 ) : (
                   <>
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                      <Circle className="h-6 w-6 text-primary" />
+                      <CheckCircle2 className="h-6 w-6 text-primary" />
                     </div>
                     <p className="text-sm font-medium">Upload complete!</p>
                     <p className="text-xs text-muted-foreground">

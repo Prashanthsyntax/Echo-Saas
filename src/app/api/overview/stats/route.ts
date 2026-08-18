@@ -30,9 +30,20 @@ export async function GET(req: Request) {
     });
   }
 
-  const workspaceFilter = workspaceId ? { workspaceId } : { userId: user.id };
+  // when no specific workspace selected, show stats across ALL user workspaces
+  const userWorkspaces = workspaceId
+    ? null
+    : await db.membership.findMany({
+        where: { userId: user.id },
+        select: { workspaceId: true },
+      });
 
-  const [videos, comments, workspaces, views, transcripts, folders] =
+  const workspaceFilter = workspaceId
+    ? { workspaceId }
+    : { workspaceId: { in: userWorkspaces!.map((m) => m.workspaceId) } };
+
+  // run ALL queries in parallel — including ragStats
+  const [videos, comments, workspaces, views, transcripts, folders, ragStats, thumbsUp] =
     await Promise.all([
       db.video.count({ where: workspaceFilter }),
       db.comment.count({ where: { userId: user.id } }),
@@ -49,18 +60,15 @@ export async function GET(req: Request) {
           ? { workspaceId }
           : { workspace: { memberships: { some: { userId: user.id } } } },
       }),
+      db.ragFeedback.aggregate({
+        where: { userId: user.id },
+        _count: { id: true },
+        _avg: { rating: true },
+      }),
+      db.ragFeedback.count({
+        where: { userId: user.id, rating: 1 },
+      }),
     ]);
-
-  // add to the Promise.all:
-const ragStats = await db.ragFeedback.aggregate({
-  where: { userId: user.id },
-  _count: { id: true },
-  _avg: { rating: true },
-});
-
-const thumbsUp = await db.ragFeedback.count({
-  where: { userId: user.id, rating: 1 },
-});
 
   return NextResponse.json({
     videos,

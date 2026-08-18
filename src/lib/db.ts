@@ -14,7 +14,7 @@ function createPrismaClient() {
 
   const adapter = new PrismaPg({
     connectionString,
-    max: 1, // limit pool size — important for serverless/Neon
+    max: 10, // allow up to 10 concurrent connections (safe for Neon)
   });
 
   return new PrismaClient({ adapter });

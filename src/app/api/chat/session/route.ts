@@ -26,11 +26,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not a member" }, { status: 403 });
   }
 
-  // find workspace-level session — not user-level
-  // we use the workspace owner's session as the shared one
-  // OR create one shared session per workspace
+  // find user's session for this workspace
   const session = await db.chatSession.findFirst({
-    where: { workspaceId },
+    where: { workspaceId, userId: user.id },
     include: {
       messages: {
         orderBy: { createdAt: "asc" },
@@ -88,9 +86,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not a member" }, { status: 403 });
   }
 
-  // find existing workspace session or create one
+  // find existing user session or create one
   let session = await db.chatSession.findFirst({
-    where: { workspaceId },
+    where: { workspaceId, userId: user.id },
   });
 
   if (!session) {
@@ -122,7 +120,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const session = await db.chatSession.findFirst({ where: { workspaceId } });
+  const session = await db.chatSession.findFirst({ where: { workspaceId, userId: user.id } });
   if (session) {
     await db.chatMessage.deleteMany({ where: { sessionId: session.id } });
   }

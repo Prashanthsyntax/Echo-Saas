@@ -43,6 +43,7 @@ export async function POST(req: Request) {
   // find existing state for this workspace (not per user)
   const existing = await db.canvasState.findFirst({
     where: { workspaceId },
+    orderBy: { updatedAt: "desc" },
   });
 
   let state;
@@ -83,6 +84,7 @@ export async function GET(req: Request) {
   // load workspace canvas — shared by all members
   const state = await db.canvasState.findFirst({
     where: { workspaceId },
+    orderBy: { updatedAt: "desc" },
   });
 
   return NextResponse.json({ state: state ?? null });

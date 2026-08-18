@@ -91,6 +91,11 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Workspace create failed:", err.error ?? res.status);
+        return;
+      }
       const workspace: Workspace = await res.json();
       setWorkspaces((prev) => [...prev, workspace]);
       switchWorkspace(workspace.id, workspace.name);
