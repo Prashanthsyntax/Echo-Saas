@@ -12,7 +12,8 @@
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .electron/main.js\"",
     "electron:build": "npm run build && npm run electron:compile && electron-builder --config electron/electron-builder.yml",
-    "postinstall": "npm run electron:compile"
+    "postinstall": "npm run electron:compile",
+    "check-node": "node -v"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.7",
