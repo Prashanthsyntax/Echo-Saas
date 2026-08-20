@@ -1,10 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { transcribeAudio, generateVideoSummary } from "@/lib/groq";
+import { groq } from "@/lib/groq";
 import { NextResponse } from "next/server";
+import { generateStructuredNotes } from "@/lib/notes-generator";
+
+const CHROMA_URL = process.env.CHROMA_SERVICE_URL;
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ videoId: string }> }
 ) {
   const { userId } = await auth();
@@ -14,116 +17,151 @@ export async function POST(
 
   const { videoId } = await params;
 
+  const video = await db.video.findUnique({
+    where: { id: videoId },
+    include: { workspace: true },
+  });
+
+  if (!video || !video.url) {
+    return NextResponse.json({ error: "Video not found" }, { status: 404 });
+  }
+
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const video = await db.video.findUnique({
-    where: { id: videoId, userId: user.id },
-  });
-
-  if (!video) {
-    return NextResponse.json({ error: "Video not found" }, { status: 404 });
-  }
-
-  if (!video.url) {
-    return NextResponse.json(
-      { error: "Video has no URL yet" },
-      { status: 400 }
-    );
-  }
-
-  // mark as processing
-  await db.video.update({
-    where: { id: videoId },
-    data: { status: "PROCESSING" },
-  });
-
   try {
-    // 1. download the video from Supabase
-    console.log("⬇️  Downloading video for transcription...");
+    // ── STEP 1: Download the video file ────────────────────────────────
+    console.log("📥 Downloading video for transcription...");
     const videoRes = await fetch(video.url);
-
     if (!videoRes.ok) {
-      throw new Error(`Failed to fetch video: ${videoRes.status}`);
+      throw new Error("Failed to download video");
     }
 
-    const arrayBuffer = await videoRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const videoBuffer = await videoRes.arrayBuffer();
+    const videoBlob = new Blob([videoBuffer], { type: "audio/webm" });
 
-    console.log(
-      `📦 Video size: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`
-    );
+    // ── STEP 2: Transcribe with Groq Whisper ───────────────────────────
+    console.log("🎙 Transcribing with Groq Whisper Large v3...");
 
-    // 2. transcribe with Groq Whisper
-    console.log("🎙️  Transcribing with Groq Whisper Large v3...");
-    const filename = video.url.split("/").pop() ?? "recording.webm";
-    const transcript = await transcribeAudio(buffer, filename);
+    const formData = new FormData();
+    formData.append("file", videoBlob, `${videoId}.webm`);
+    formData.append("model", "whisper-large-v3");
+    formData.append("response_format", "verbose_json"); // get timestamps + language
+    formData.append("temperature", "0");
 
-    console.log(
-      `✅ Transcript (${transcript.length} chars): ${transcript.slice(0, 100)}...`
-    );
-
-    // 3. generate title + summary with Groq Llama
-    console.log("🤖 Generating title and summary with Llama 3.3 70B...");
-    const { title, summary } = await generateVideoSummary(
-      transcript,
-      video.duration
-    );
-
-    console.log(`✅ Title: ${title}`);
-    console.log(`✅ Summary: ${summary}`);
-
-    // 4. auto-ingest transcript into RAG
-    if (transcript && process.env.CHROMA_SERVICE_URL) {
-      try {
-        await fetch(`${process.env.CHROMA_SERVICE_URL}/ingest/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: userId,
-            content: transcript,
-            source: `Echo video: ${title ?? video.title}`,
-            source_type: "transcript",
-          }),
-        });
-        console.log("✅ Transcript auto-ingested into RAG");
-      } catch (err) {
-        console.warn("RAG auto-ingest failed (non-fatal):", err);
+    const whisperRes = await fetch(
+      "https://api.groq.com/openai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        body: formData,
       }
+    );
+
+    if (!whisperRes.ok) {
+      const err = await whisperRes.text();
+      throw new Error(`Whisper failed: ${err}`);
     }
 
-    // 5. update the video row
+    const whisperData = await whisperRes.json();
+    const rawTranscript: string = whisperData.text ?? "";
+    const detectedLanguage: string = whisperData.language ?? "en";
+
+    if (!rawTranscript.trim()) {
+      throw new Error("Empty transcript — video may have no audio");
+    }
+
+    console.log(`✅ Transcribed ${rawTranscript.length} chars in ${detectedLanguage}`);
+
+    // ── STEP 3: Generate structured notes with Groq Llama ─────────────
+    console.log("📝 Generating structured notes...");
+    const notes = await generateStructuredNotes(rawTranscript, video.title);
+
+    // ── STEP 4: Save everything to DB ─────────────────────────────────
+    console.log("💾 Saving to database...");
     await db.video.update({
       where: { id: videoId },
       data: {
+        transcript: rawTranscript,
+        structuredNotes: notes.structuredNotes,
+        summary: notes.summary,
+        keyPoints: notes.keyPoints,
+        actionItems: notes.actionItems,
+        topics: notes.topics,
+        language: notes.language,
+        speakerCount: notes.speakerCount,
+        title:
+          video.title === "Untitled Video" ? notes.title : video.title,
         status: "READY",
-        transcript,
-        title,
-        summary,
       },
     });
 
+    console.log("✅ DB updated");
+
+    // ── STEP 5: Auto-ingest structured notes into RAG ─────────────────
+    if (CHROMA_URL && notes.structuredNotes) {
+      console.log("🧠 Ingesting into RAG pipeline...");
+      const ragNamespace = video.workspaceId;
+      try {
+        await fetch(`${CHROMA_URL}/ingest/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: ragNamespace,
+            content: notes.structuredNotes,
+            source: `Video: ${notes.title}`,
+            source_type: "video_notes",
+          }),
+        });
+        console.log("✅ Ingested into RAG");
+      } catch (ragErr) {
+        console.warn("RAG ingestion failed (non-fatal):", ragErr);
+      }
+    }
+
+    // ── STEP 6: Log activity ──────────────────────────────────────────
+    try {
+      await db.activityLog.create({
+        data: {
+          workspaceId: video.workspaceId,
+          userId: user.id,
+          type: "VIDEO_UPLOADED",
+          description: `video "${notes.title}" transcribed and notes generated`,
+          metadata: {
+            videoId,
+            language: notes.language,
+            topicsCount: notes.topics.length,
+            keyPointsCount: notes.keyPoints.length,
+          },
+        },
+      });
+    } catch {}
+
     return NextResponse.json({
       success: true,
-      videoId,
-      title,
-      summary,
-      transcriptLength: transcript.length,
+      transcript: rawTranscript,
+      notes: notes.structuredNotes,
+      summary: notes.summary,
+      keyPoints: notes.keyPoints,
+      actionItems: notes.actionItems,
+      topics: notes.topics,
+      language: notes.language,
     });
-  } catch (err: unknown) {
-    console.error("❌ Transcription failed:", err);
+  } catch (err) {
+    console.error("Transcription error:", err);
 
+    // set status back to READY so video is still playable
     await db.video.update({
       where: { id: videoId },
-      data: { status: "READY" }, // revert to READY not FAILED — video still works, just no AI
+      data: { status: "READY" },
     });
 
     return NextResponse.json(
       {
-        error: "Transcription failed",
-        detail: err instanceof Error ? err.message : "Unknown error",
+        error:
+          err instanceof Error ? err.message : "Transcription failed",
       },
       { status: 500 }
     );

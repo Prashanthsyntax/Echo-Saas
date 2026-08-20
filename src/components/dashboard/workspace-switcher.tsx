@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Check, ChevronDown, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-context";
+import { workspaceStore } from "@/lib/workspace-store";
+import type { Role } from "@prisma/client";
 
 interface Workspace {
   id: string;
@@ -15,7 +17,7 @@ interface Workspace {
 }
 
 interface WorkspaceSwitcherProps {
-  onManage: (id: string, name: string) => void;
+  onManage: (id: string, name: string, role: Role) => void;
 }
 
 export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
@@ -29,23 +31,42 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/workspaces")
-      .then((r) => r.json())
-      .then((data) => {
-        const list: Workspace[] = data.workspaces ?? [];
-        setWorkspaces(list);
-        // auto-select first workspace if none saved
-        if (!workspaceId && list.length > 0) {
-          switchWorkspace(list[0].id, list[0].name);
-        }
-        setLoading(false);
-      });
+    const fetchWorkspaces = () => {
+      fetch("/api/workspaces")
+        .then((r) => r.json())
+        .then((data) => {
+          const list: Workspace[] = data.workspaces ?? [];
+          setWorkspaces(list);
+          const stored = workspaceStore?.get?.() ?? null;
+          const active =
+            stored && list.find((w) => w.id === stored)
+              ? stored
+              : (list[0]?.id ?? null);
+
+          if (active) {
+            const ws = list.find((w) => w.id === active);
+            if (ws) switchWorkspace(ws.id, ws.name);
+          }
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    };
+
+    fetchWorkspaces();
+
+    // re-fetch when user comes back to the tab
+    // catches the case where they accepted an invite in another tab
+    window.addEventListener("focus", fetchWorkspaces);
+    return () => window.removeEventListener("focus", fetchWorkspaces);
   }, []); // eslint-disable-line
 
   // close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
         setShowCreate(false);
       }
@@ -70,6 +91,11 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Workspace create failed:", err.error ?? res.status);
+        return;
+      }
       const workspace: Workspace = await res.json();
       setWorkspaces((prev) => [...prev, workspace]);
       switchWorkspace(workspace.id, workspace.name);
@@ -118,7 +144,7 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-white/30 transition-transform duration-200",
-            open && "rotate-180"
+            open && "rotate-180",
           )}
         />
       </button>
@@ -173,7 +199,11 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
               <button
                 type="button"
                 onClick={() => {
-                  onManage(activeWorkspace.id, activeWorkspace.name);
+                  onManage(
+                    activeWorkspace.id,
+                    activeWorkspace.name,
+                    activeWorkspace.role as Role,
+                  );
                   setOpen(false);
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/40 transition-colors hover:bg-white/5 hover:text-white/70"
@@ -208,7 +238,9 @@ export function WorkspaceSwitcher({ onManage }: WorkspaceSwitcherProps) {
                   >
                     {creating ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : "Create workspace"}
+                    ) : (
+                      "Create workspace"
+                    )}
                   </button>
                   <button
                     type="button"

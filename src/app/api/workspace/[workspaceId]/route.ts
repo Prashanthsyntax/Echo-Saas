@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 export async function PATCH(
   req: Request,
@@ -21,23 +22,9 @@ export async function PATCH(
     );
   }
 
-  // verify this user is a member of the workspace
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-
-  const membership = await db.membership.findUnique({
-    where: {
-      userId_workspaceId: {
-        userId: user.id,
-        workspaceId,
-      },
-    },
-  });
-
-  if (!membership || membership.role === "MEMBER") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const result = await requireWorkspacePermission(workspaceId, "RENAME_WORKSPACE");
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   const workspace = await db.workspace.update({

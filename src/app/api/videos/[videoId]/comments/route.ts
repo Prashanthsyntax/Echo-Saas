@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireVideoPermission } from "@/lib/workspace-auth";
 
 export async function POST(
   req: Request,
@@ -16,6 +17,11 @@ export async function POST(
 
   if (!content?.trim()) {
     return NextResponse.json({ error: "Content required" }, { status: 400 });
+  }
+
+  const access = await requireVideoPermission(videoId, "COMMENT_VIDEO");
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
   const clerkUser = await currentUser();

@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { outranks } from "@/lib/permissions";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 export async function GET(
   _req: Request,
@@ -18,9 +20,13 @@ export async function GET(
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  // verify requester is a member of this workspace
   const membership = await db.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+    where: {
+      userId_workspaceId: { userId: user.id, workspaceId },
+    },
   });
+
   if (!membership) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -51,6 +57,7 @@ export async function GET(
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
       },
     }
   );
@@ -68,21 +75,36 @@ export async function DELETE(
   const { workspaceId } = await params;
   const { memberId } = await req.json();
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const result = await requireWorkspacePermission(workspaceId, "REMOVE_MEMBER");
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const requester = await db.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+  const targetMembership = await db.membership.findUnique({
+    where: {
+      userId_workspaceId: { userId: memberId, workspaceId },
+    },
   });
 
-  if (!requester || requester.role === "MEMBER") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!targetMembership) {
+    return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
+
+  if (memberId === result.user.id) {
+    return NextResponse.json({ error: "You cannot remove yourself" }, { status: 400 });
+  }
+
+  if (!outranks(result.membership.role, targetMembership.role)) {
+    return NextResponse.json(
+      { error: "Cannot remove a member with equal or higher rank" },
+      { status: 403 }
+    );
   }
 
   await db.membership.delete({
-    where: { userId_workspaceId: { userId: memberId, workspaceId } },
+    where: {
+      userId_workspaceId: { userId: memberId, workspaceId },
+    },
   });
 
   return NextResponse.json({ success: true });

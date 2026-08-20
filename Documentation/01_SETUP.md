@@ -290,6 +290,11 @@ STRIPE_PRO_PRICE_ID="price_..."
 ```
 ```powershell
 npm install stripe @stripe/stripe-js
+
+stripe login
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+
+after entering these commands then perform the stripe billing
 ```
 
 ### Local webhook testing

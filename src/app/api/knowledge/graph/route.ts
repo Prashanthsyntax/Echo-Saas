@@ -1,10 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-// GET — load saved graph for current workspace
+import { db } from "@/lib/db";
+import { hasPermission } from "@/lib/permissions";
+
+// GET — Load workspace knowledge graph
 export async function GET(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -13,24 +16,50 @@ export async function GET(req: Request) {
   const workspaceId = searchParams.get("workspaceId");
 
   if (!workspaceId) {
-    return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "workspaceId required" },
+      { status: 400 },
+    );
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!user) return NextResponse.json({ graph: null });
-
-  const graph = await db.knowledgeGraph.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
   });
 
-  if (!graph) return NextResponse.json({ graph: null });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
 
-  return NextResponse.json({ graph });
+  // Ensure user belongs to workspace
+  const membership = await db.membership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId,
+      },
+    },
+  });
+
+  if (!membership) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Workspace shared graph
+  const graph = await db.knowledgeGraph.findFirst({
+    where: {
+      workspaceId,
+    },
+  });
+
+  return NextResponse.json({
+    graph: graph ?? null,
+  });
 }
 
-// POST — save or update graph for current workspace
+// POST — Create or replace workspace graph
 export async function POST(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -51,50 +80,86 @@ export async function POST(req: Request) {
   if (!workspaceId || !title || !graphData) {
     return NextResponse.json(
       { error: "workspaceId, title, graphData required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
+  });
+
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const graph = await db.knowledgeGraph.upsert({
-    where: { userId_workspaceId: { userId: user.id, workspaceId } },
-    update: {
-      title,
-      summary,
-      graphData,
-      nodePositions,
-      zoomLevel,
-      panX,
-      panY,
-      selectedNodeId,
-      sourceFile,
-      updatedAt: new Date(),
-    },
-    create: {
-      userId: user.id,
-      workspaceId,
-      title,
-      summary,
-      graphData,
-      nodePositions,
-      zoomLevel,
-      panX,
-      panY,
-      selectedNodeId,
-      sourceFile,
+  const membership = await db.membership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId,
+      },
     },
   });
 
-  return NextResponse.json({ graphId: graph.id });
+  if (
+    !membership ||
+    !hasPermission(membership.role, "INGEST_DOCUMENTS")
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const existing = await db.knowledgeGraph.findFirst({
+    where: {
+      workspaceId,
+    },
+  });
+
+  let graph;
+
+  if (existing) {
+    graph = await db.knowledgeGraph.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        title,
+        summary,
+        graphData,
+        nodePositions,
+        zoomLevel,
+        panX,
+        panY,
+        selectedNodeId,
+        sourceFile,
+      },
+    });
+  } else {
+    graph = await db.knowledgeGraph.create({
+      data: {
+        userId: user.id,
+        workspaceId,
+        title,
+        summary,
+        graphData,
+        nodePositions,
+        zoomLevel,
+        panX,
+        panY,
+        selectedNodeId,
+        sourceFile,
+      },
+    });
+  }
+
+  return NextResponse.json({
+    graphId: graph.id,
+  });
 }
 
-// PATCH — update only viewport/positions (called frequently on drag/zoom)
+// PATCH — Update viewport/positions
 export async function PATCH(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -109,46 +174,112 @@ export async function PATCH(req: Request) {
   } = await req.json();
 
   if (!workspaceId) {
-    return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "workspaceId required" },
+      { status: 400 },
+    );
   }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
+  });
+
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  await db.knowledgeGraph.updateMany({
-    where: { userId: user.id, workspaceId },
+  const membership = await db.membership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId,
+      },
+    },
+  });
+
+  if (!membership) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const graph = await db.knowledgeGraph.findFirst({
+    where: {
+      workspaceId,
+    },
+  });
+
+  if (!graph) {
+    return NextResponse.json(
+      { error: "Graph not found" },
+      { status: 404 },
+    );
+  }
+
+  await db.knowledgeGraph.update({
+    where: {
+      id: graph.id,
+    },
     data: {
       ...(nodePositions !== undefined && { nodePositions }),
       ...(zoomLevel !== undefined && { zoomLevel }),
       ...(panX !== undefined && { panX }),
       ...(panY !== undefined && { panY }),
       ...(selectedNodeId !== undefined && { selectedNodeId }),
-      updatedAt: new Date(),
     },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+  });
 }
 
-// DELETE — clear saved graph for current workspace
+// DELETE — Remove workspace graph (OWNER/ADMIN only)
 export async function DELETE(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { workspaceId } = await req.json();
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  if (!workspaceId) {
+    return NextResponse.json(
+      { error: "workspaceId required" },
+      { status: 400 },
+    );
+  }
+
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
+  });
+
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  await db.knowledgeGraph.deleteMany({
-    where: { userId: user.id, workspaceId },
+  const membership = await db.membership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId,
+      },
+    },
   });
 
-  return NextResponse.json({ success: true });
+  if (
+    !membership ||
+    (membership.role !== "OWNER" && membership.role !== "ADMIN")
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await db.knowledgeGraph.deleteMany({
+    where: {
+      workspaceId,
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+  });
 }

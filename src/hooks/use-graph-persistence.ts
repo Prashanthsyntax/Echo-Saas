@@ -14,6 +14,17 @@ interface ViewportState {
   panY: number;
 }
 
+// explicit shape for partial viewport/position updates —
+// avoids intersecting with NodePositions' index signature, which was
+// causing "nodePositions" to be checked against the {x,y} index type
+interface ViewportUpdate {
+  nodePositions?: NodePositions;
+  zoomLevel?: number;
+  panX?: number;
+  panY?: number;
+  selectedNodeId?: string | null;
+}
+
 interface SavedGraphState {
   id: string;
   title: string;
@@ -90,7 +101,7 @@ export function useGraphPersistence() {
 
   // debounced save for viewport + positions (called on every drag/zoom)
   const saveViewport = useCallback(
-    (update: Partial<NodePositions & ViewportState & { selectedNodeId: string | null }>) => {
+    (update: ViewportUpdate) => {
       if (!workspaceId) return;
 
       if (debounceRef.current) clearTimeout(debounceRef.current);

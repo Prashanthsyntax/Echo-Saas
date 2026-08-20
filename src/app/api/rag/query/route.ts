@@ -3,6 +3,7 @@ import { groq } from "@/lib/groq";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { NextResponse } from "next/server";
+import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       take: 20,
     });
     boostSources.push(
-      ...scores.map((s) => ({ source: s.sourceDoc, score: s.score }))
+      ...scores.map((s) => ({ source: s.sourceDoc, score: s.score })),
     );
   }
 
@@ -64,21 +65,59 @@ export async function POST(req: Request) {
   }
 
   // 3. retrieve with adaptive scoring
-  const retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      user_id: userId,
-      question: expandedQuestion,
-      top_k: 8,
-      boost_sources: boostSources,
-    }),
-  });
+  // with workspace-scoped namespace:
+  const workspaceId = req.headers.get("x-workspace-id");
+  const ragNamespace = workspaceId ?? userId;
+
+  if (workspaceId) {
+    const result = await requireWorkspacePermission(
+      workspaceId,
+      "QUERY_KNOWLEDGE",
+    );
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      );
+    }
+  }
+
+  // then use ragNamespace everywhere userId was used in the Chroma calls
+  let retrievalRes: Response;
+  try {
+    retrievalRes = await fetch(`${CHROMA_URL}/query/scored`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: ragNamespace, // workspace-scoped
+        question: expandedQuestion,
+        top_k: 8,
+        boost_sources: boostSources,
+      }),
+    });
+  } catch {
+    // fetch itself threw — service is unreachable, likely cold-starting on Render
+    return NextResponse.json(
+      {
+        error: "rag_unavailable",
+        reason: "The RAG service is cold-starting on Render. Wait 15 seconds and try again.",
+        retryAfter: 15,
+      },
+      { status: 503 },
+    );
+  }
 
   if (!retrievalRes.ok) {
+    const isTimeout = retrievalRes.status === 504;
     return NextResponse.json(
-      { error: "Retrieval service unavailable" },
-      { status: 503 }
+      {
+        error: "rag_unavailable",
+        reason: isTimeout
+          ? "The RAG service timed out — it may be cold-starting. Try again in 15 seconds."
+          : "The RAG service is temporarily unavailable.",
+        retryAfter: 15,
+      },
+      { status: 503 },
     );
   }
 
@@ -132,13 +171,13 @@ export async function POST(req: Request) {
       decrypted,
       SYSTEM_PROMPT,
       history,
-      userMessage
+      userMessage,
     );
     answer = result.answer;
     modelUsed = `${agentKey.provider} / ${agentKey.model}`;
   } else {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-20b",
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       temperature: 0.1,
       max_tokens: 800,
@@ -162,7 +201,7 @@ async function callAgentModel(
   apiKey: string,
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
-  userMessage: string
+  userMessage: string,
 ): Promise<{ answer: string }> {
   const messages = [
     ...history.slice(-6),
@@ -219,7 +258,7 @@ async function callAgentModel(
             parts: [{ text: m.content }],
           })),
         }),
-      }
+      },
     );
     const data = await res.json();
     return {

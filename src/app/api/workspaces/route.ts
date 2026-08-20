@@ -4,37 +4,76 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  // always get or create the user row first
+  const clerkUser = await currentUser();
+  let user = await db.user.findUnique({ where: { clerkId: userId } });
+
+  if (!user && clerkUser) {
+    user = await db.user.create({
+      data: {
+        clerkId: userId,
+        email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
+        name:
+          [clerkUser.firstName, clerkUser.lastName]
+            .filter(Boolean)
+            .join(" ") || null,
+        imageUrl: clerkUser.imageUrl,
+      },
+    });
+  }
+
   if (!user) return NextResponse.json({ workspaces: [] });
 
+  // fetch ALL workspaces this user is a member of
   const memberships = await db.membership.findMany({
     where: { userId: user.id },
     include: {
       workspace: {
         include: {
-          memberships: { include: { user: true } },
+          memberships: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, imageUrl: true },
+              },
+            },
+          },
+          subscription: true,
           _count: { select: { videos: true } },
         },
       },
     },
+    orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({
-    workspaces: memberships.map((m) => ({
-      ...m.workspace,
-      role: m.role,
-    })),
+  const workspaces = memberships.map((m) => ({
+    id: m.workspace.id,
+    name: m.workspace.name,
+    plan: m.workspace.plan,
+    role: m.role,
+    subscription: m.workspace.subscription,
+    memberships: m.workspace.memberships,
+    _count: m.workspace._count,
+  }));
+
+  return NextResponse.json({ workspaces }, {
+    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
   });
 }
 
 export async function POST(req: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const clerkUser = await currentUser();
-  if (!clerkUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!clerkUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { name } = await req.json();
   if (!name?.trim()) {
@@ -47,7 +86,10 @@ export async function POST(req: Request) {
       data: {
         clerkId: userId,
         email: clerkUser.emailAddresses[0]?.emailAddress ?? "",
-        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null,
+        name:
+          [clerkUser.firstName, clerkUser.lastName]
+            .filter(Boolean)
+            .join(" ") || null,
         imageUrl: clerkUser.imageUrl,
       },
     });
@@ -61,10 +103,25 @@ export async function POST(req: Request) {
       },
     },
     include: {
-      memberships: { include: { user: true } },
+      memberships: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, imageUrl: true },
+          },
+        },
+      },
+      subscription: true,
       _count: { select: { videos: true } },
     },
   });
 
-  return NextResponse.json({ ...workspace, role: "OWNER" });
+  return NextResponse.json({
+    id: workspace.id,
+    name: workspace.name,
+    plan: workspace.plan,
+    role: "OWNER",
+    subscription: workspace.subscription,
+    memberships: workspace.memberships,
+    _count: workspace._count,
+  });
 }

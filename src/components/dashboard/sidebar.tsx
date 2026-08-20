@@ -8,20 +8,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { UserProfileModal } from "./user-profile-modal";
 import { WorkspaceManager } from "./workspace-manager";
+import { useWorkspace } from "@/lib/workspace-context";
 import { useState } from "react";
 import {
-  LayoutDashboard,
-  LayoutGrid,
-  Video,
-  PenTool,
-  Workflow,
-  Network,
-  MessageSquare,
-  Bot,
-  Settings,
-  CreditCard,
-  Plus,
+  LayoutDashboard, LayoutGrid, Video, PenTool,
+  Workflow, Network, MessageSquare, Bot,
+  Settings, Shield, CreditCard, Plus,
 } from "lucide-react";
+import { Role } from "@prisma/client";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -39,10 +33,12 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useUser();
+  const { workspaceId } = useWorkspace();
   const [showProfile, setShowProfile] = useState(false);
   const [managingWorkspace, setManagingWorkspace] = useState<{
     id: string;
     name: string;
+    role: Role;
   } | null>(null);
 
   const name =
@@ -74,7 +70,9 @@ export function Sidebar() {
 
         {/* workspace switcher */}
         <WorkspaceSwitcher
-          onManage={(id, name) => setManagingWorkspace({ id, name })}
+          onManage={(id, name, role) =>
+            setManagingWorkspace({ id, name, role })
+          }
         />
 
         {/* new recording */}
@@ -99,7 +97,7 @@ export function Sidebar() {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={workspaceId ? `${item.href}?workspaceId=${workspaceId}` : item.href}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                   isActive
@@ -150,6 +148,7 @@ export function Sidebar() {
         <WorkspaceManager
           workspaceId={managingWorkspace.id}
           workspaceName={managingWorkspace.name}
+          currentUserRole={managingWorkspace.role}
           onClose={() => setManagingWorkspace(null)}
         />
       )}

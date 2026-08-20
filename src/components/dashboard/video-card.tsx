@@ -1,69 +1,44 @@
 "use client";
 
-import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
-import { Eye, Clock, MoreVertical, Trash2, ExternalLink } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { MoreHorizontal, Trash2, Play, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Video } from "@prisma/client";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface VideoCardProps {
-  video: {
-    id: string;
-    title: string;
-    url: string | null;
-    thumbnailUrl: string | null;
-    duration: number | null;
-    status: string;
-    viewCount: number;
-    createdAt: Date;
-  };
+  video: Video;
+  canDelete?: boolean;
+  uploaderName?: string;
+  uploaderImage?: string;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return "0:00";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-export function VideoCard({ video }: VideoCardProps) {
-  const router = useRouter();
+export function VideoCard({
+  video,
+  canDelete = true,
+  uploaderName,
+  uploaderImage,
+}: VideoCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!confirm("Delete this video? This cannot be undone.")) return;
+  const handleDelete = async () => {
+    if (!confirm("Delete this video permanently?")) return;
     setDeleting(true);
-    try {
-      await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
-      router.refresh();
-    } catch {
-      setDeleting(false);
-    }
+    await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
+    window.location.reload();
   };
 
-  const isReady = video.status === "READY";
-
   return (
-    <Card
+    <div
       className={cn(
-        "group overflow-hidden border-border bg-card transition-colors hover:border-primary/30",
-        deleting && "pointer-events-none opacity-50"
+        "group overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/30",
+        deleting && "opacity-50 pointer-events-none"
       )}
     >
-      {/* thumbnail / preview area */}
       <Link href={`/v/${video.id}`}>
-        <div className="relative aspect-video bg-secondary/30">
+        <div className="relative aspect-video bg-gradient-to-br from-secondary to-background">
           {video.thumbnailUrl ? (
             <img
               src={video.thumbnailUrl}
@@ -71,89 +46,80 @@ export function VideoCard({ video }: VideoCardProps) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <div className="space-y-2 text-center">
-                <div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* duration badge */}
-          {video.duration && (
-            <div className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs font-medium text-white">
-              {formatDuration(video.duration)}
-            </div>
-          )}
-
-          {/* status badge for non-ready videos */}
-          {!isReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <Badge variant="secondary" className="text-xs">
-                {video.status === "UPLOADING"
-                  ? "Uploading..."
-                  : video.status === "PROCESSING"
-                  ? "Processing..."
-                  : video.status}
-              </Badge>
+            <div className="flex h-full items-center justify-center">
+              <Play className="h-8 w-8 text-muted-foreground/30" />
             </div>
           )}
         </div>
       </Link>
 
-      {/* card footer */}
-      <CardContent className="p-3">
+      <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <Link href={`/v/${video.id}`}>
-              <p className="truncate text-sm font-medium hover:text-primary transition-colors">
+              <p className="truncate text-sm font-medium hover:text-primary">
                 {video.title}
               </p>
             </Link>
-            <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Eye className="h-3 w-3" />
-                {video.viewCount}
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {formatDistanceToNow(new Date(video.createdAt), {
-                  addSuffix: true,
-                })}
-              </span>
-            </div>
+
+            {/* uploader info */}
+            {uploaderName && (
+              <div className="mt-1 flex items-center gap-1.5">
+                <Avatar className="h-4 w-4">
+                  <AvatarImage src={uploaderImage ?? ""} />
+                  <AvatarFallback className="text-[8px]">
+                    {uploaderName[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="text-[11px] text-muted-foreground">
+                  {uploaderName}
+                </p>
+              </div>
+            )}
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              {new Date(video.createdAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+              {video.viewCount > 0 && ` · ${video.viewCount} views`}
+            </p>
           </div>
 
-          {/* actions menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          {canDelete && (
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="rounded-lg p-1 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:bg-secondary hover:text-foreground"
               >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem asChild>
-                <Link href={`/v/${video.id}`} className="flex items-center gap-2">
-                  <ExternalLink className="h-4 w-4" />
-                  Open
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={handleDelete}
-                className="flex items-center gap-2 text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+
+              {menuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        handleDelete();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete video
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

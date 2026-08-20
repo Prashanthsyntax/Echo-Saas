@@ -5,7 +5,7 @@ import { StatsRow } from "@/components/overview/stats-row";
 import { ActionCards } from "@/components/overview/action-cards";
 import { AgentsSection } from "@/components/overview/agents-section";
 import { DataSources } from "@/components/overview/data-sources";
-import { ModelCard } from "@/components/overview/model-card";
+// import { ModelCard } from "@/components/overview/model-card";
 
 export default async function OverviewPage() {
   const { userId } = await auth();
@@ -15,7 +15,7 @@ export default async function OverviewPage() {
     <div className="min-h-full p-8">
       <Greeting />
       <StatsRow />
-      <ModelCard />
+      {/* <ModelCard /> */}
       <ActionCards />
       <AgentsSection />
       <DataSources />

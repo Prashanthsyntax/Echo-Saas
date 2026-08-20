@@ -4,13 +4,30 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Chatbot } from "@/components/shared/chatbot";
 import { cn } from "@/lib/utils";
 import "./globals.css";
+import { Toaster } from "sonner";
 
 const inter = localFont({
   src: [
-    { path: "../../public/fonts/Inter-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../../public/fonts/Inter-Medium.ttf", weight: "500", style: "normal" },
-    { path: "../../public/fonts/Inter-SemiBold.ttf", weight: "600", style: "normal" },
-    { path: "../../public/fonts/Inter-Bold.ttf", weight: "700", style: "normal" },
+    {
+      path: "../../public/fonts/Inter-Regular.ttf",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/Inter-Medium.ttf",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/Inter-SemiBold.ttf",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/Inter-Bold.ttf",
+      weight: "700",
+      style: "normal",
+    },
   ],
   variable: "--font-sans",
   display: "swap",
@@ -71,6 +88,16 @@ export default function RootLayout({
         <body className="min-h-screen bg-background text-foreground antialiased font-sans overflow-x-hidden">
           {children}
           <Chatbot />
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: "#111114",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#e4e4e7",
+              },
+            }}
+          />
         </body>
       </html>
     </ClerkProvider>

@@ -8,18 +8,21 @@ import { BillingClient } from "@/components/dashboard/billing-client";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ success?: string; canceled?: string }>;
+  searchParams: Promise<{ success?: string; canceled?: string; workspaceId?: string }>;
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const { success, canceled } = await searchParams;
+  const { success, canceled, workspaceId } = await searchParams;
 
   const user = await db.user.findUnique({ where: { clerkId: userId } });
   if (!user) redirect("/sign-in");
 
   const workspace = await db.workspace.findFirst({
-    where: { memberships: { some: { userId: user.id } } },
+    where: {
+      id: workspaceId || undefined,
+      memberships: { some: { userId: user.id } },
+    },
     include: { subscription: true },
   });
 
