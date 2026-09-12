@@ -7,10 +7,11 @@ Complete environment setup, from an empty folder to a fully running local develo
 ## 1. Prerequisites
 
 - Node.js 22+ and npm
-- Python 3.11+ (for the Chroma RAG microservice)
+- Python 3.13+ (for the Chroma RAG microservice)
 - Git
 - A GitHub account
-- Windows PowerShell (or equivalent shell) — this project was built on Windows
+- Windows PowerShell and CommandShell (or equivalent shell) — this project was built on Windows
+- Groq API Key
 
 All tools and services used are free-tier — no credit card required anywhere in this setup.
 
@@ -23,7 +24,8 @@ npx create-next-app@latest echo
 ```
 
 Prompts answered:
-```
+
+```powershell
 TypeScript                 → Yes
 ESLint                     → Yes
 Tailwind CSS               → Yes
@@ -33,23 +35,29 @@ Import alias (@/*)         → No (default)
 ```
 
 Verify dev server runs:
+
 ```powershell
 cd echo
 npm run dev
 ```
 
 ### Folder structure correction
+
 If `create-next-app` placed `app/` at the project root instead of inside `src/`, move it manually:
+
 ```powershell
 mkdir src
 mv app src/app
 ```
+
 Update `tsconfig.json` paths:
+
 ```json
 "paths": { "@/*": ["./src/*"] }
 ```
 
 ### Create supporting folders
+
 ```powershell
 mkdir -p src/components/ui src/lib src/server src/types prisma
 ```
@@ -71,7 +79,8 @@ npx shadcn@latest init
 ```
 
 Prompts:
-```
+
+```powershell
 Component library    → Radix
 Style                 → New York
 Base color            → Zinc
@@ -81,11 +90,13 @@ CSS variables         → Yes
 > Note: shadcn's CLI evolved mid-project to a "presets" flow (Nova, Vega, Maia, etc.) on v4.11. If presented with presets, choose **Custom** (or any preset — values get overwritten in the next step regardless).
 
 Install icons:
+
 ```powershell
 npm install lucide-react
 ```
 
 Add core components used throughout the app:
+
 ```powershell
 npx shadcn@latest add button card avatar dropdown-menu separator skeleton dialog input badge textarea tabs switch label select
 ```
@@ -93,15 +104,18 @@ npx shadcn@latest add button card avatar dropdown-menu separator skeleton dialog
 ### Custom theme tokens
 
 Replace the `:root` / `.dark` blocks in `src/app/globals.css` with the project's violet/sky/near-black palette (see `globals.css` in the repo for exact HSL values). Key decisions:
+
 - Primary: violet, `263° hue`
 - Accent: sky blue, `199° hue`
 - Background (dark): near-black `240 6% 4%`, not pure `#000`
 - Single `--radius` value drives all corner rounding
 
 **Common pitfall:** running `npx shadcn add <component>` can append a second, duplicate `:root`/`.dark` block to `globals.css` instead of merging into the existing one. Since CSS cascade means the later block wins, this silently overrides custom theme colors. After every `shadcn add`, grep for duplicate `:root` declarations:
+
 ```powershell
 findstr /n ":root" src\app\globals.css
 ```
+
 Should return exactly one match.
 
 ---
@@ -109,11 +123,13 @@ Should return exactly one match.
 ## 4. Database — Prisma + Neon
 
 ### Create free Neon Postgres database
+
 1. https://neon.tech → sign up free (GitHub login, no card)
 2. Create project `echo`
 3. Copy the pooled connection string
 
 ### Install Prisma
+
 ```powershell
 npm install prisma --save-dev
 npm install @prisma/client
@@ -121,16 +137,21 @@ npx prisma init
 ```
 
 ### Set the connection string
+
 In `.env`:
-```
+
+```powershell
 DATABASE_URL="postgresql://user:pass@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=verify-full&connect_timeout=30"
 ```
+
 `sslmode=verify-full` (not `require`) avoids a deprecation warning from the `pg` driver. `connect_timeout=30` accommodates Neon's free-tier cold start after inactivity.
 
 ### Prisma 7 architecture note
+
 Prisma 7 removed the `url` field from `schema.prisma`'s `datasource` block. The URL now lives in `prisma.config.ts` (for the CLI/migrations) and is passed explicitly to a driver adapter at runtime (for the app).
 
 `prisma.config.ts`:
+
 ```ts
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
@@ -143,6 +164,7 @@ export default defineConfig({
 ```
 
 `schema.prisma` datasource block:
+
 ```prisma
 datasource db {
   provider = "postgresql"
@@ -150,12 +172,14 @@ datasource db {
 ```
 
 Install the Postgres driver adapter:
+
 ```powershell
 npm install @prisma/adapter-pg pg
 npm install --save-dev @types/pg
 ```
 
 `src/lib/db.ts`:
+
 ```ts
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -175,16 +199,20 @@ function createPrismaClient() {
 export const db = globalForPrisma.prisma ?? createPrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 ```
+
 `max: 1` caps the connection pool — important on Neon's free tier connection limits, especially with Next.js hot-reload spawning new client instances in dev.
 
 ### Write the schema and migrate
+
 The full schema (10 models — User, Workspace, Membership, Folder, Video, Comment, Subscription, Invite, AgentKey, RagFeedback, ChunkScore) lives in `prisma/schema.prisma`. After writing it:
+
 ```powershell
 npx prisma migrate dev --name init
 npx prisma generate
 ```
 
 Verify visually:
+
 ```powershell
 npx prisma studio
 ```
@@ -198,7 +226,8 @@ npx prisma studio
 1. https://clerk.com → sign up, create application `echo`
 2. Enable Email + Google sign-in methods
 3. Copy API keys into `.env`:
-```
+
+```powershell
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
 CLERK_SECRET_KEY="sk_test_..."
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
@@ -206,24 +235,43 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/overview
 NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/overview
 ```
+
 ```powershell
 npm install @clerk/nextjs
 ```
 
 ### Route protection middleware
+
 Next.js 16 renamed `middleware.ts` → `proxy.ts`. File lives at `src/proxy.ts`:
+
 ```ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isProtectedRoute = createRouteMatcher([
-  "/overview(.*)", "/dashboard(.*)", "/record(.*)", "/canvas(.*)",
-  "/workflows(.*)", "/knowledge(.*)", "/chat(.*)", "/agents(.*)",
-  "/rag(.*)", "/settings(.*)", "/billing(.*)",
-  "/api/rag(.*)", "/api/agents(.*)",
+  "/overview(.*)",
+  "/dashboard(.*)",
+  "/record(.*)",
+  "/canvas(.*)",
+  "/workflows(.*)",
+  "/knowledge(.*)",
+  "/chat(.*)",
+  "/agents(.*)",
+  "/settings(.*)",       // already covers /settings/workspace
+  "/billing(.*)",
+  "/api/rag(.*)",
+  "/api/agents(.*)",
+  "/api/presence(.*)",
+  "/api/canvas(.*)",
+  "/api/knowledge(.*)",
+  "/api/chat(.*)",
+  "/api/workspaces(.*)",
+  "/api/overview(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) await auth.protect();
+  if (isProtectedRoute(req)) {
+    await auth.protect();
+  }
 });
 
 export const config = {
@@ -235,18 +283,23 @@ export const config = {
 ```
 
 ### Webhook — sync Clerk users into Postgres
+
 ```powershell
 npm install svix
 ```
+
 Route at `src/app/api/webhooks/clerk/route.ts` verifies the signature with `svix`, then upserts a `User` row on `user.created`/`user.updated`, deletes on `user.deleted`.
 
 **Local webhook testing requires a public tunnel** (Clerk's servers can't reach `localhost`):
+
 ```powershell
 ngrok http 3000
 ```
+
 Register the printed `https://xxxx.ngrok-free.app/api/webhooks/clerk` URL in Clerk's dashboard under Webhooks, copy the signing secret into `.env` as `CLERK_WEBHOOK_SECRET`.
 
 **Known friction point:** free ngrok URLs regenerate on every restart, silently breaking the webhook until the URL is updated in Clerk's dashboard. A free static ngrok domain (Dashboard → Domains) eliminates this permanently:
+
 ```powershell
 ngrok http 3000 --domain=your-reserved-name.ngrok-free.app
 ```
@@ -263,11 +316,12 @@ R2 was the original plan but requires a card on file even on the free tier. Supa
 2. Storage → New bucket → name `videos` → toggle **Public bucket** on
 3. Settings → API → copy Project URL and `service_role` key (not `anon`)
 
-```
+```powershell
 SUPABASE_URL="https://xxxx.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY="eyJ..."
 SUPABASE_STORAGE_BUCKET="videos"
 ```
+
 ```powershell
 npm install @supabase/supabase-js
 ```
@@ -282,12 +336,13 @@ npm install @supabase/supabase-js
 2. Developers → API keys → copy publishable + secret keys
 3. Product catalog → create "Echo Pro" product, $12/month recurring → copy the Price ID
 
-```
+```powershell
 STRIPE_SECRET_KEY="sk_test_..."
 STRIPE_PUBLISHABLE_KEY="pk_test_..."
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
 STRIPE_PRO_PRICE_ID="price_..."
 ```
+
 ```powershell
 npm install stripe @stripe/stripe-js
 
@@ -298,10 +353,12 @@ after entering these commands then perform the stripe billing
 ```
 
 ### Local webhook testing
+
 ```powershell
 stripe login
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
+
 Copy the printed `whsec_...` into `.env` as `STRIPE_WEBHOOK_SECRET`. Like ngrok, this regenerates on every CLI restart — re-sync after restarting.
 
 Enable the Customer Portal once, in test mode: https://dashboard.stripe.com/test/settings/billing/portal → Activate test link.
@@ -310,12 +367,14 @@ Enable the Customer Portal once, in test mode: https://dashboard.stripe.com/test
 
 ## 8. AI — Groq (Free Whisper + Llama)
 
-```
+```powershell
 GROQ_API_KEY="gsk_..."
 ```
+
 ```powershell
 npm install groq-sdk
 ```
+
 No credit card required. Free tier: 2,000 audio transcription requests/day (Whisper Large v3), generous daily token limits on Llama 3.3 70B chat completions.
 
 `src/lib/groq.ts` exports a singleton `groq` client used by: video transcription, AI title/summary generation, the website chatbot, the dashboard chat, and the RAG answer generation (`echo-nemo-1.0`'s default model).
@@ -329,6 +388,7 @@ No new service — uses browser-native `MediaRecorder` and `getDisplayMedia`/`ge
 ```powershell
 npm install socket.io-client
 ```
+
 (Socket.io client installed for future real-time progress; current implementation uses a direct base64 upload to the Next.js API rather than chunked socket streaming.)
 
 ---
@@ -339,6 +399,7 @@ npm install socket.io-client
 npm install fabric
 npm install --save-dev @types/fabric
 ```
+
 **React 18 Strict Mode gotcha:** Strict Mode runs effects twice in development, which causes Fabric to throw "canvas already initialized" if not guarded. Fix: an `initializingRef` flag prevents a second `new Canvas()` call on the same DOM node during the double-invoke.
 
 ---
@@ -348,6 +409,7 @@ npm install --save-dev @types/fabric
 ```powershell
 npm install @xyflow/react
 ```
+
 Dark-mode CSS overrides for React Flow's default light styling are appended to `globals.css` (`.react-flow__controls`, `.react-flow__edge-path`, etc.).
 
 ---
@@ -358,6 +420,7 @@ Dark-mode CSS overrides for React Flow's default light styling are appended to `
 npm install d3 pdfjs-dist
 npm install --save-dev @types/d3
 ```
+
 `pdfjs-dist`'s worker is loaded from a CDN (`cdn.jsdelivr.net`) rather than bundled, avoiding Webpack/Turbopack bundling issues with the worker file.
 
 ---

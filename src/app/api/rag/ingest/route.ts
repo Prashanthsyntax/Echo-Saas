@@ -4,7 +4,10 @@ import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
-async function safeParseError(res: Response, fallback: string): Promise<string> {
+async function safeParseError(
+  res: Response,
+  fallback: string,
+): Promise<string> {
   const text = await res.text();
   try {
     const json = JSON.parse(text);
@@ -16,6 +19,7 @@ async function safeParseError(res: Response, fallback: string): Promise<string> 
 
 export async function POST(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -23,9 +27,16 @@ export async function POST(req: Request) {
   const workspaceId = req.headers.get("x-workspace-id");
 
   if (workspaceId) {
-    const result = await requireWorkspacePermission(workspaceId, "INGEST_DOCUMENTS");
+    const result = await requireWorkspacePermission(
+      workspaceId,
+      "INGEST_DOCUMENTS",
+    );
+
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      );
     }
   }
 
@@ -38,12 +49,13 @@ export async function POST(req: Request) {
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData();
     const file = formData.get("file") as File;
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const upstream = new FormData();
-    upstream.append("user_id", ragNamespace); // workspace namespace
+    upstream.append("user_id", ragNamespace);
     upstream.append("file", file, file.name);
 
     const res = await fetch(`${CHROMA_URL}/ingest/file`, {
@@ -53,10 +65,28 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "File ingestion failed");
+
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    return NextResponse.json(await res.json());
+    const ingestData = await res.json();
+
+    // fire-and-forget contradiction check
+    // don't await — don't block the user's upload
+    if (workspaceId && ingestData.ingested > 0) {
+      fetch(`${new URL("/api/knowledge/contradiction", req.url)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          newChunks: [ingestData.sample_chunks ?? []].flat().slice(0, 5),
+          newSource: ingestData.source,
+          newSourceType: ingestData.doc_type ?? "unknown",
+        }),
+      }).catch(() => {});
+    }
+
+    return NextResponse.json(ingestData);
   }
 
   const body = await req.json();
@@ -65,15 +95,39 @@ export async function POST(req: Request) {
     const res = await fetch(`${CHROMA_URL}/ingest/url`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: ragNamespace, url: body.url }),
+      body: JSON.stringify({
+        user_id: ragNamespace,
+        url: body.url,
+      }),
     });
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "URL ingestion failed");
+
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    return NextResponse.json(await res.json());
+    const ingestData = await res.json();
+
+    // fire-and-forget contradiction check
+    // don't await — don't block the user's upload
+    if (workspaceId && ingestData.sample_chunks?.length > 0) {
+      fetch(
+        `${process.env.APP_URL ?? "http://localhost:3000"}/api/knowledge/contradiction`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId,
+            newChunks: ingestData.sample_chunks,
+            newSource: ingestData.source,
+            newSourceType: ingestData.doc_type ?? "unknown",
+          }),
+        },
+      ).catch(() => {});
+    }
+
+    return NextResponse.json(ingestData);
   }
 
   if (body.content && body.source) {
@@ -90,14 +144,32 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errorMsg = await safeParseError(res, "Text ingestion failed");
+
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    return NextResponse.json(await res.json());
+    const ingestData = await res.json();
+
+    // fire-and-forget contradiction check
+    // don't await — don't block the user's upload
+    if (workspaceId && ingestData.ingested > 0) {
+      fetch(`${new URL("/api/knowledge/contradiction", req.url)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          newChunks: [ingestData.sample_chunks ?? []].flat().slice(0, 5),
+          newSource: ingestData.source,
+          newSourceType: ingestData.doc_type ?? "unknown",
+        }),
+      }).catch(() => {});
+    }
+
+    return NextResponse.json(ingestData);
   }
 
   return NextResponse.json(
     { error: "Provide file, url, or content+source" },
-    { status: 400 }
+    { status: 400 },
   );
 }

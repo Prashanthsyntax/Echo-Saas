@@ -61,6 +61,9 @@ model User {
   canvasStates    CanvasState[]
   activityLogs    ActivityLog[]
   presenceSessions PresenceSession[]
+  kanbanCards         KanbanCard[]
+  kanbanCardsCreated  KanbanCard[]    @relation("KanbanCardCreator")
+  kanbanComments      KanbanComment[]
 }
 
 model Workspace {
@@ -83,6 +86,9 @@ model Workspace {
   activityLogs     ActivityLog[]
   settings         WorkspaceSettings?
   presenceSessions PresenceSession[]
+  decayLogs       KnowledgeDecayLog[]
+  contradictions  KnowledgeContradiction[]
+  kanbanBoard KanbanBoard?
 }
 
 model Membership {
@@ -346,4 +352,118 @@ model PresenceSession {
   workspaceId String
 
   @@unique([userId, workspaceId])
+}
+
+enum ContradictionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ContradictionStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model KnowledgeDecayLog {
+  id            String   @id @default(cuid())
+  sourceDoc     String   // document name
+  docType       String   // pdf, url, transcript, docx, txt
+  chunkCount    Int      @default(0)
+  avgDecayScore Float    @default(1.0)   // 0.0 = fully stale, 1.0 = fresh
+  halfLifeDays  Int      // configured half-life for this doc type
+  ingestedAt    DateTime // when it was first ingested
+  lastCheckedAt DateTime @default(now())
+  isFlagged     Boolean  @default(false)
+  flagReason    String?
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String
+
+  @@unique([workspaceId, sourceDoc])
+}
+
+model KnowledgeContradiction {
+  id              String                @id @default(cuid())
+  sourceDocA      String                // older document
+  sourceDocB      String                // newer document
+  chunkTextA      String                @db.Text
+  chunkTextB      String                @db.Text
+  similarityScore Float                 // cosine similarity that triggered check
+  llmVerdict      String                @db.Text  // LLM explanation
+  severity        ContradictionSeverity @default(MEDIUM)
+  status          ContradictionStatus   @default(OPEN)
+  resolvedBy      String?               // userId who resolved
+  resolvedAt      DateTime?
+  createdAt       DateTime              @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+}
+
+enum KanbanPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model KanbanBoard {
+  id          String        @id @default(cuid())
+  name        String        @default("Platform board")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String        @unique
+
+  cards       KanbanCard[]
+}
+
+model KanbanCard {
+  id          String        @id @default(cuid())
+  ticketId    String        // e.g. "HAL-241" — auto-generated
+  title       String
+  description String?       @db.Text
+  column      String        // "todo" | "inprogress" | "testing" | "done"
+  position    Int           @default(0)
+  label       String?       // "Billing" | "Platform" | "API" | "Identity" | "Growth"
+  labelColor  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  board       KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  boardId     String
+
+  assignee    User?         @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId  String?
+
+  creator     User          @relation("KanbanCardCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId   String
+
+  comments    KanbanComment[]
+  attachments KanbanAttachment[]
+}
+
+model KanbanComment {
+  id        String     @id @default(cuid())
+  content   String     @db.Text
+  createdAt DateTime   @default(now())
+
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  cardId    String
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+}
+
+model KanbanAttachment {
+  id        String     @id @default(cuid())
+  name      String
+  url       String
+  createdAt DateTime   @default(now())
+
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  cardId    String
 }

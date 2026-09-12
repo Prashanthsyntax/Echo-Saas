@@ -1,19 +1,35 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Circle, ArrowRight, Play } from "lucide-react";
+import CursorGrid from "@/components/ui/CursorGrid";
+import { motion } from "framer-motion";
 
 export function Hero() {
   return (
-    <div className="relative overflow-hidden">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 50% at 50% -10%, hsl(263 70% 58% / 0.15), transparent)",
-        }}
-      />
+    <div className="relative isolate min-h-screen overflow-hidden">
+      <div className="pointer-events-auto absolute inset-0 z-0">
+        <CursorGrid
+          className="h-full w-full"
+          cellSize={70}
+          color="#10B981"
+          radius={140}
+          falloff="smooth"
+          holdTime={400}
+          fadeDuration={800}
+          lineWidth={1.2}
+          maxOpacity={0.6}
+          fillOpacity={0}
+          gridOpacity={0.05}
+          cellRadius={0}
+          clickPulse
+          pulseSpeed={600}
+        />
+      </div>
 
-      <section className="mx-auto flex max-w-4xl flex-col items-center px-6 pt-16 text-center md:pt-24">
+      <section className="pointer-events-none relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-16 text-center md:pt-24">
         <Badge
           variant="secondary"
           className="gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
@@ -33,7 +49,7 @@ export function Hero() {
           their own time. No calendars, no Zoom fatigue.
         </p>
 
-        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+        <div className="pointer-events-auto mt-8 flex flex-col items-center gap-3 sm:flex-row">
           <Button size="lg" className="gap-2">
             Start for free
             <ArrowRight className="h-4 w-4" />
@@ -49,8 +65,14 @@ export function Hero() {
         </p>
       </section>
 
-      <section className="mx-auto mt-16 max-w-4xl px-6 pb-24 md:mt-20">
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40">
+      <section className="relative z-10 mx-auto mt-16 max-w-4xl px-6 pb-24 md:mt-20">
+        <motion.div
+          initial={{ opacity: 0, y: 40, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.3, ease: [0.21, 0.47, 0.32, 0.98] }}
+          whileHover={{ y: -6, transition: { duration: 0.3, ease: "easeOut" } }}
+          className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40"
+        >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
@@ -69,20 +91,15 @@ export function Hero() {
             <div className="w-12" />
           </div>
 
-          <div className="relative aspect-video bg-gradient-to-br from-secondary to-background p-8">
-            <div className="space-y-3">
-              <div className="h-3 w-1/3 rounded bg-muted" />
-              <div className="h-3 w-1/2 rounded bg-muted/70" />
-              <div className="h-3 w-1/4 rounded bg-muted/50" />
-            </div>
-
-            {/* <div className="absolute bottom-1/3 right-1/3 flex h-8 w-8 items-center justify-center rounded-full border border-accent/40 bg-accent/10 backdrop-blur-sm">
-              <div className="h-2 w-2 rounded-full bg-accent" />
-            </div> */}
-
-            {/* <div className="absolute bottom-4 right-4 h-16 w-16 rounded-full border-2 border-card bg-muted shadow-lg md:h-20 md:w-20" /> */}
-          </div>
-        </div>
+          <Image
+            src="/dashboard-preview.png"
+            alt="Echo dashboard overview showing recordings, views, and workspace tools"
+            width={1296}
+            height={734}
+            className="h-auto w-full"
+            priority
+          />
+        </motion.div>
       </section>
     </div>
   );
