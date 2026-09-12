@@ -41,6 +41,15 @@ interface Board {
   cards: KanbanCard[];
 }
 
+type CardPatch = Partial<{
+  title:       string;
+  description: string | null;
+  column:      string;
+  label:       string | null;
+  labelColor:  string | null;
+  assigneeId:  string | null;
+}>;
+
 /* ─── Constants ──────────────────────────────────────────────────────── */
 const COLUMNS = [
   { id: "todo",       label: "To Do",        accent: "#6B7280" },
@@ -147,7 +156,7 @@ function CardModal({
 
   useEffect(() => { fetchCard(); }, [fetchCard]);
 
-  const patch = async (body: Partial<KanbanCard>) => {
+  const patch = async (body: CardPatch) => {
     const res  = await fetch(`/api/kanban/cards/${cardId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
