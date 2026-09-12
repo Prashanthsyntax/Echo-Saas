@@ -4,7 +4,10 @@ import { requireWorkspacePermission } from "@/lib/workspace-auth";
 
 const CHROMA_URL = process.env.CHROMA_SERVICE_URL!;
 
-async function safeParseError(res: Response, fallback: string): Promise<string> {
+async function safeParseError(
+  res: Response,
+  fallback: string,
+): Promise<string> {
   const text = await res.text();
   try {
     const json = JSON.parse(text);
@@ -26,13 +29,13 @@ export async function POST(req: Request) {
   if (workspaceId) {
     const result = await requireWorkspacePermission(
       workspaceId,
-      "INGEST_DOCUMENTS"
+      "INGEST_DOCUMENTS",
     );
 
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error },
-        { status: result.status }
+        { status: result.status },
       );
     }
   }
@@ -48,10 +51,7 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "No file provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const upstream = new FormData();
@@ -64,15 +64,9 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const errorMsg = await safeParseError(
-        res,
-        "File ingestion failed"
-      );
+      const errorMsg = await safeParseError(res, "File ingestion failed");
 
-      return NextResponse.json(
-        { error: errorMsg },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     const ingestData = await res.json();
@@ -85,9 +79,7 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId,
-          newChunks: [ingestData.sample_chunks ?? []]
-            .flat()
-            .slice(0, 5),
+          newChunks: [ingestData.sample_chunks ?? []].flat().slice(0, 5),
           newSource: ingestData.source,
           newSourceType: ingestData.doc_type ?? "unknown",
         }),
@@ -110,34 +102,29 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const errorMsg = await safeParseError(
-        res,
-        "URL ingestion failed"
-      );
+      const errorMsg = await safeParseError(res, "URL ingestion failed");
 
-      return NextResponse.json(
-        { error: errorMsg },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     const ingestData = await res.json();
 
     // fire-and-forget contradiction check
     // don't await — don't block the user's upload
-    if (workspaceId && ingestData.ingested > 0) {
-      fetch(`${new URL("/api/knowledge/contradiction", req.url)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          newChunks: [ingestData.sample_chunks ?? []]
-            .flat()
-            .slice(0, 5),
-          newSource: ingestData.source,
-          newSourceType: ingestData.doc_type ?? "unknown",
-        }),
-      }).catch(() => {});
+    if (workspaceId && ingestData.sample_chunks?.length > 0) {
+      fetch(
+        `${process.env.APP_URL ?? "http://localhost:3000"}/api/knowledge/contradiction`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId,
+            newChunks: ingestData.sample_chunks,
+            newSource: ingestData.source,
+            newSourceType: ingestData.doc_type ?? "unknown",
+          }),
+        },
+      ).catch(() => {});
     }
 
     return NextResponse.json(ingestData);
@@ -156,15 +143,9 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok) {
-      const errorMsg = await safeParseError(
-        res,
-        "Text ingestion failed"
-      );
+      const errorMsg = await safeParseError(res, "Text ingestion failed");
 
-      return NextResponse.json(
-        { error: errorMsg },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
     const ingestData = await res.json();
@@ -177,9 +158,7 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId,
-          newChunks: [ingestData.sample_chunks ?? []]
-            .flat()
-            .slice(0, 5),
+          newChunks: [ingestData.sample_chunks ?? []].flat().slice(0, 5),
           newSource: ingestData.source,
           newSourceType: ingestData.doc_type ?? "unknown",
         }),
@@ -191,6 +170,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json(
     { error: "Provide file, url, or content+source" },
-    { status: 400 }
+    { status: 400 },
   );
 }
