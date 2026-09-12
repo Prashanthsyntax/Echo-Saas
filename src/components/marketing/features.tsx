@@ -1,5 +1,8 @@
+"use client"; // BorderGlow tracks mouse position, so it needs to be a Client Component
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Zap, MessageSquare, FolderTree } from "lucide-react";
+import BorderGlow from "@/components/ui/BorderGlow";
 
 const features = [
   {
@@ -36,19 +39,34 @@ export function Features() {
 
       <div className="mt-12 grid gap-6 md:grid-cols-3">
         {features.map((feature) => (
-          <Card key={feature.title} className="border-border bg-card">
-            <CardHeader>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <feature.icon className="h-5 w-5 text-primary" />
-              </div>
-              <CardTitle className="mt-4 text-base">{feature.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {feature.description}
-              </p>
-            </CardContent>
-          </Card>
+          <BorderGlow
+            key={feature.title}
+            edgeSensitivity={30}
+            glowColor="40 80 80"
+            backgroundColor="#120F17"
+            borderRadius={28}
+            glowRadius={40}
+            glowIntensity={1}
+            coneSpread={25}
+            animated={false}
+            colors={["#c084fc", "#f472b6", "#38bdf8"]}
+          >
+            <Card className="h-full w-full rounded-[28px] border-none bg-transparent shadow-none">
+              <CardHeader>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <feature.icon className="h-5 w-5 text-primary" />
+                </div>
+                <CardTitle className="mt-4 text-base">
+                  {feature.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  {feature.description}
+                </p>
+              </CardContent>
+            </Card>
+          </BorderGlow>
         ))}
       </div>
     </section>

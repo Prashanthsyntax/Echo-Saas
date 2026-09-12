@@ -13,7 +13,7 @@ export function Hero() {
         <CursorGrid
           className="h-full w-full"
           cellSize={70}
-          color="#D946EF"
+          color="#10B981"
           radius={140}
           falloff="smooth"
           holdTime={400}
