@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useWorkspace } from "@/lib/workspace-context";
 import {
   AlertTriangle, CheckCircle, Clock, Loader2,
-  RefreshCw, FileText, Zap, Shield, TrendingDown,
+  RefreshCw, FileText, Shield, TrendingDown,
   ChevronDown, ChevronUp, X, Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
