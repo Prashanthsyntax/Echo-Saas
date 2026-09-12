@@ -1,14 +1,15 @@
-"use client"; // ← Required since CursorGrid uses useRef/useEffect
+"use client";
 
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Circle, ArrowRight, Play } from "lucide-react";
-import CursorGrid from "@/components/ui/CursorGrid"; // ← default import, no curly braces
+import CursorGrid from "@/components/ui/CursorGrid";
+import { motion } from "framer-motion";
 
 export function Hero() {
   return (
     <div className="relative isolate min-h-screen overflow-hidden">
-      {/* pointer-events-auto (not none) — CursorGrid listens on its own container */}
       <div className="pointer-events-auto absolute inset-0 z-0">
         <CursorGrid
           className="h-full w-full"
@@ -28,7 +29,6 @@ export function Hero() {
         />
       </div>
 
-      {/* pointer-events-none so hover passes through blank space to the grid below */}
       <section className="pointer-events-none relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-16 text-center md:pt-24">
         <Badge
           variant="secondary"
@@ -49,7 +49,6 @@ export function Hero() {
           their own time. No calendars, no Zoom fatigue.
         </p>
 
-        {/* Re-enable pointer events just for the buttons */}
         <div className="pointer-events-auto mt-8 flex flex-col items-center gap-3 sm:flex-row">
           <Button size="lg" className="gap-2">
             Start for free
@@ -67,7 +66,13 @@ export function Hero() {
       </section>
 
       <section className="relative z-10 mx-auto mt-16 max-w-4xl px-6 pb-24 md:mt-20">
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40">
+        <motion.div
+          initial={{ opacity: 0, y: 40, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.3, ease: [0.21, 0.47, 0.32, 0.98] }}
+          whileHover={{ y: -6, transition: { duration: 0.3, ease: "easeOut" } }}
+          className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40"
+        >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
@@ -86,14 +91,15 @@ export function Hero() {
             <div className="w-12" />
           </div>
 
-          <div className="relative aspect-video bg-gradient-to-br from-secondary to-background p-8">
-            <div className="space-y-3">
-              <div className="h-3 w-1/3 rounded bg-muted" />
-              <div className="h-3 w-1/2 rounded bg-muted/70" />
-              <div className="h-3 w-1/4 rounded bg-muted/50" />
-            </div>
-          </div>
-        </div>
+          <Image
+            src="/dashboard-preview.png"
+            alt="Echo dashboard overview showing recordings, views, and workspace tools"
+            width={1296}
+            height={734}
+            className="h-auto w-full"
+            priority
+          />
+        </motion.div>
       </section>
     </div>
   );
