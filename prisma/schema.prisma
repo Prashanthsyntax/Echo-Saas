@@ -83,6 +83,8 @@ model Workspace {
   activityLogs     ActivityLog[]
   settings         WorkspaceSettings?
   presenceSessions PresenceSession[]
+  decayLogs       KnowledgeDecayLog[]
+  contradictions  KnowledgeContradiction[]
 }
 
 model Membership {
@@ -346,4 +348,53 @@ model PresenceSession {
   workspaceId String
 
   @@unique([userId, workspaceId])
+}
+
+enum ContradictionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ContradictionStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model KnowledgeDecayLog {
+  id            String   @id @default(cuid())
+  sourceDoc     String   // document name
+  docType       String   // pdf, url, transcript, docx, txt
+  chunkCount    Int      @default(0)
+  avgDecayScore Float    @default(1.0)   // 0.0 = fully stale, 1.0 = fresh
+  halfLifeDays  Int      // configured half-life for this doc type
+  ingestedAt    DateTime // when it was first ingested
+  lastCheckedAt DateTime @default(now())
+  isFlagged     Boolean  @default(false)
+  flagReason    String?
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String
+
+  @@unique([workspaceId, sourceDoc])
+}
+
+model KnowledgeContradiction {
+  id              String                @id @default(cuid())
+  sourceDocA      String                // older document
+  sourceDocB      String                // newer document
+  chunkTextA      String                @db.Text
+  chunkTextB      String                @db.Text
+  similarityScore Float                 // cosine similarity that triggered check
+  llmVerdict      String                @db.Text  // LLM explanation
+  severity        ContradictionSeverity @default(MEDIUM)
+  status          ContradictionStatus   @default(OPEN)
+  resolvedBy      String?               // userId who resolved
+  resolvedAt      DateTime?
+  createdAt       DateTime              @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
 }

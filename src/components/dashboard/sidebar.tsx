@@ -26,6 +26,7 @@ const navItems = [
   { href: "/knowledge", label: "Knowledge", icon: Network },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/knowledge-health", label: "KG Health", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];
