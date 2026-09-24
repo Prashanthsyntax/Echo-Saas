@@ -1,6 +1,6 @@
 # Echo — Setup Guide
 
-Complete environment setup, from an empty folder to a fully running local development environment. Every step is in the order it was actually performed.
+Complete environment setup of Echo-Saas, from an empty folder to a fully running local development environment. Every step is in the order it was actually performed.
 
 ---
 
