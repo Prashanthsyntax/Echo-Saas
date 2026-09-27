@@ -6,101 +6,140 @@ import { NextResponse } from "next/server";
 // GET — fetch full conversation with messages
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ conversationId: string }> }
+  { params }: { params: Promise<{ conversationId: string }> },
 ) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { conversationId } = await params;
-  const { searchParams }   = new URL(req.url);
-  const cursor             = searchParams.get("cursor"); // for pagination
+  const { searchParams } = new URL(req.url);
+  const cursor = searchParams.get("cursor");
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
+    select: { id: true },
+  });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // verify participant
+  // verify participant fast
   const participant = await db.conversationParticipant.findUnique({
     where: { conversationId_userId: { conversationId, userId: user.id } },
+    select: {
+      isStarred: true,
+      isMuted: true,
+      unreadCount: true,
+      lastReadAt: true,
+    },
   });
-  if (!participant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!participant)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  // fetch conversation + participants in one query
   const conversation = await db.conversation.findUnique({
     where: { id: conversationId },
-    include: {
+    select: {
+      id: true,
+      subject: true,
+      isGroup: true,
+      status: true,
+      creatorId: true,
       participants: {
-        include: {
-          user: { select: { id: true, name: true, email: true, imageUrl: true } },
+        select: {
+          userId: true,
+          user: {
+            select: { id: true, name: true, email: true, imageUrl: true },
+          },
         },
       },
     },
   });
-  if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!conversation)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // paginated messages — newest first, then reversed for display
+  // fetch only top-level messages (parentId null) — fast
   const messages = await db.message.findMany({
     where: {
       conversationId,
       isDeleted: false,
-      parentId:  null, // only top-level messages; replies fetched per-message
+      parentId: null,
       ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
     },
-    include: {
+    select: {
+      id: true,
+      content: true,
+      type: true,
+      senderId: true,
+      conversationId: true,
+      parentId: true,
+      isEdited: true,
+      isDeleted: true,
+      metadata: true,
+      createdAt: true,
       sender: { select: { id: true, name: true, email: true, imageUrl: true } },
       reactions: {
-        include: { user: { select: { id: true, name: true } } },
+        select: { emoji: true, user: { select: { id: true, name: true } } },
       },
-      attachments: true,
+      attachments: {
+        select: { id: true, name: true, url: true, size: true, mimeType: true },
+      },
       readReceipts: {
-        include: { user: { select: { id: true, name: true, imageUrl: true } } },
+        select: {
+          userId: true,
+          readAt: true,
+          user: { select: { id: true, name: true, imageUrl: true } },
+        },
       },
-      mentions: {
-        include: { user: { select: { id: true, name: true } } },
-      },
+      mentions: { select: { user: { select: { id: true, name: true } } } },
       poll: {
-        include: {
+        select: {
+          id: true,
+          question: true,
+          allowMultiple: true,
+          endsAt: true,
           options: {
-            include: { votes: { include: { user: { select: { id: true, name: true } } } } },
+            select: {
+              id: true,
+              text: true,
+              votes: { select: { user: { select: { id: true, name: true } } } },
+            },
           },
         },
-      },
-      replies: {
-        where:   { isDeleted: false },
-        include: {
-          sender: { select: { id: true, name: true, email: true, imageUrl: true } },
-          reactions: { include: { user: { select: { id: true, name: true } } } },
-          attachments: true,
-        },
-        orderBy: { createdAt: "asc" },
-        take:    3,
       },
       _count: { select: { replies: true } },
     },
     orderBy: { createdAt: "desc" },
-    take:    30,
+    take: 30,
   });
 
-  // mark all as read
-  await db.conversationParticipant.update({
-    where: { conversationId_userId: { conversationId, userId: user.id } },
-    data:  { lastReadAt: new Date(), unreadCount: 0 },
-  });
+  // mark conversation as read async (don't await)
+  db.conversationParticipant
+    .update({
+      where: { conversationId_userId: { conversationId, userId: user.id } },
+      data: { lastReadAt: new Date(), unreadCount: 0 },
+    })
+    .catch(() => {});
 
-  // bulk upsert read receipts for unread messages
-  const unread = messages.filter(
-    m => !m.readReceipts.some(r => r.userId === user.id)
-  );
-  if (unread.length > 0) {
-    await db.messageReadReceipt.createMany({
-      data: unread.map(m => ({ messageId: m.id, userId: user.id })),
-      skipDuplicates: true,
-    });
+  // bulk insert read receipts async (don't await — don't block response)
+  const unreadIds = messages
+    .filter((m) => !m.readReceipts.some((r) => r.userId === user.id))
+    .map((m) => m.id);
+
+  if (unreadIds.length > 0) {
+    db.messageReadReceipt
+      .createMany({
+        data: unreadIds.map((messageId) => ({ messageId, userId: user.id })),
+        skipDuplicates: true,
+      })
+      .catch(() => {});
   }
 
   return NextResponse.json({
     conversation,
-    messages:  messages.reverse(), // chronological order
-    hasMore:   messages.length === 30,
-    nextCursor:messages.length === 30 ? messages[0].createdAt.toISOString() : null,
+    messages: messages.reverse(),
+    hasMore: messages.length === 30,
+    nextCursor:
+      messages.length === 30 ? messages[0]?.createdAt.toISOString() : null,
     myParticipant: participant,
   });
 }
@@ -108,10 +147,11 @@ export async function GET(
 // PATCH — star, archive, mute conversation
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ conversationId: string }> }
+  { params }: { params: Promise<{ conversationId: string }> },
 ) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { conversationId } = await params;
   const body = await req.json();
@@ -125,7 +165,7 @@ export async function PATCH(
       where: { conversationId_userId: { conversationId, userId: user.id } },
       data: {
         ...(body.isStarred !== undefined && { isStarred: body.isStarred }),
-        ...(body.isMuted   !== undefined && { isMuted:   body.isMuted   }),
+        ...(body.isMuted !== undefined && { isMuted: body.isMuted }),
       },
     });
   }
@@ -134,7 +174,7 @@ export async function PATCH(
   if ("status" in body) {
     await db.conversation.update({
       where: { id: conversationId },
-      data:  { status: body.status },
+      data: { status: body.status },
     });
   }
 
@@ -152,10 +192,11 @@ export async function PATCH(
 //   appearing in the requester's own Inbox/Sent/Starred/Archived lists.
 export async function DELETE(
   _req: Request,
-  { params }: { params: Promise<{ conversationId: string }> }
+  { params }: { params: Promise<{ conversationId: string }> },
 ) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { conversationId } = await params;
 
@@ -171,13 +212,17 @@ export async function DELETE(
       participants: { select: { userId: true } },
     },
   });
-  if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!conversation)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const isParticipant = conversation.participants.some(p => p.userId === user.id);
-  if (!isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const isParticipant = conversation.participants.some(
+    (p) => p.userId === user.id,
+  );
+  if (!isParticipant)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (conversation.creatorId === user.id) {
-    const remainingUserIds = conversation.participants.map(p => p.userId);
+    const remainingUserIds = conversation.participants.map((p) => p.userId);
 
     await db.conversation.delete({ where: { id: conversationId } });
 
@@ -187,7 +232,7 @@ export async function DELETE(
     await pusherServer.trigger(
       CHANNELS.workspace(conversation.workspaceId),
       EVENTS.CONVERSATION_DELETED,
-      { conversationId, forUserIds: remainingUserIds }
+      { conversationId, forUserIds: remainingUserIds },
     );
 
     return NextResponse.json({ success: true, deletedFor: "everyone" });

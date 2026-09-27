@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
-  const filter = searchParams.get("filter") ?? "inbox"; // inbox | starred | archived | sent
+  const filter = searchParams.get("filter") ?? "inbox";
 
   if (!workspaceId)
     return NextResponse.json(
@@ -20,57 +20,52 @@ export async function GET(req: Request) {
       { status: 400 },
     );
 
-  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  const user = await db.user.findUnique({
+    where: { clerkId: userId },
+    select: { id: true },
+  });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // build filter conditions
-  const participantWhere: any = {
-    userId: user.id,
-    conversation: { workspaceId },
-  };
-
-  if (filter === "starred") participantWhere.isStarred = true;
-  if (filter === "archived")
-    participantWhere.conversation = {
-      ...participantWhere.conversation,
-      status: "ARCHIVED",
-    };
-  if (filter === "sent")
-    participantWhere.conversation = {
-      ...participantWhere.conversation,
-      creatorId: user.id,
-      status: "ACTIVE",
-    };
-  if (filter === "inbox") {
-    participantWhere.conversation = {
-      ...participantWhere.conversation,
-      status: "ACTIVE",
-    };
-  }
-
+  // single optimized query — no nested message fetches
   const participants = await db.conversationParticipant.findMany({
-    where: participantWhere,
-    include: {
+    where: {
+      userId: user.id,
       conversation: {
-        include: {
+        workspaceId,
+        ...(filter === "archived"
+          ? { status: "ARCHIVED" }
+          : { status: "ACTIVE" }),
+        ...(filter === "sent" ? { creatorId: user.id } : {}),
+      },
+      ...(filter === "starred" ? { isStarred: true } : {}),
+    },
+    select: {
+      isStarred: true,
+      isMuted: true,
+      unreadCount: true,
+      lastReadAt: true,
+      conversation: {
+        select: {
+          id: true,
+          subject: true,
+          isGroup: true,
+          status: true,
+          lastMessageAt: true,
+          lastMessagePreview: true,
+          creatorId: true,
           participants: {
-            include: {
+            select: {
+              userId: true,
               user: {
                 select: { id: true, name: true, email: true, imageUrl: true },
               },
-            },
-          },
-          messages: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            include: {
-              sender: { select: { id: true, name: true, email: true } },
             },
           },
         },
       },
     },
     orderBy: { conversation: { lastMessageAt: "desc" } },
+    take: 40,
   });
 
   const conversations = participants.map((p) => ({
@@ -81,7 +76,6 @@ export async function GET(req: Request) {
       unreadCount: p.unreadCount,
       lastReadAt: p.lastReadAt,
     },
-    latestMessage: p.conversation.messages[0] ?? null,
   }));
 
   return NextResponse.json({ conversations });

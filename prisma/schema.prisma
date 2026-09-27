@@ -919,6 +919,7 @@ model ConversationParticipant {
   userId         String
 
   @@unique([conversationId, userId])
+  @@index([userId, conversationId])
 }
 
 model Message {
@@ -949,6 +950,8 @@ model Message {
   attachments    MessageAttachment[]
   readReceipts   MessageReadReceipt[]
   poll           Poll?
+  @@index([conversationId, parentId, createdAt])
+  @@index([conversationId, isDeleted, createdAt])
 }
 
 model MessageMention {
