@@ -140,3 +140,63 @@ export async function PATCH(
 
   return NextResponse.json({ success: true });
 }
+
+// DELETE — delete an entire conversation.
+// - If the requester created it: hard-deletes the Conversation row.
+//   Prisma's onDelete: Cascade on ConversationParticipant, Message, etc.
+//   (all defined with `onDelete: Cascade` back to Conversation) removes
+//   every related row automatically — nothing else to clean up by hand.
+// - If the requester is just a participant (not the creator): they are
+//   removed from the conversation instead. The conversation itself, and
+//   everyone else's copy of it, is left untouched — it simply stops
+//   appearing in the requester's own Inbox/Sent/Starred/Archived lists.
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ conversationId: string }> }
+) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { conversationId } = await params;
+
+  const user = await db.user.findUnique({ where: { clerkId: userId } });
+  if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const conversation = await db.conversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      id: true,
+      creatorId: true,
+      workspaceId: true,
+      participants: { select: { userId: true } },
+    },
+  });
+  if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const isParticipant = conversation.participants.some(p => p.userId === user.id);
+  if (!isParticipant) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  if (conversation.creatorId === user.id) {
+    const remainingUserIds = conversation.participants.map(p => p.userId);
+
+    await db.conversation.delete({ where: { id: conversationId } });
+
+    // let everyone else's open tab drop it from their list / close the
+    // thread in real time (requires a matching listener on the
+    // workspace channel client-side — see CONVERSATION_DELETED note).
+    await pusherServer.trigger(
+      CHANNELS.workspace(conversation.workspaceId),
+      EVENTS.CONVERSATION_DELETED,
+      { conversationId, forUserIds: remainingUserIds }
+    );
+
+    return NextResponse.json({ success: true, deletedFor: "everyone" });
+  }
+
+  // not the creator — just leave the conversation
+  await db.conversationParticipant.delete({
+    where: { conversationId_userId: { conversationId, userId: user.id } },
+  });
+
+  return NextResponse.json({ success: true, deletedFor: "self" });
+}

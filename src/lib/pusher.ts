@@ -43,4 +43,6 @@ export const EVENTS = {
   USER_PRESENCE:        "user-presence",
   POLL_VOTE:            "poll-vote",
   AI_SUMMARY_READY:     "ai-summary-ready",
+
+  CONVERSATION_DELETED: "conversation:deleted",
 };

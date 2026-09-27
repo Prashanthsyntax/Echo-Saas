@@ -321,10 +321,14 @@ function MessageBubble({
 }
 
 /* ─── Conversation list item ──────────────────────────────────────── */
+// Wrapped in a `group relative` container so the delete button can sit
+// absolutely positioned on top of the row and only reveal on hover,
+// without interfering with the row's own click-to-open behavior.
 function ConvItem({
-  conv, active, currentUserId, onClick,
+  conv, active, currentUserId, onClick, onDelete,
 }: {
   conv: any; active: boolean; currentUserId: string; onClick: () => void;
+  onDelete: (id: string) => void;
 }) {
   const others = conv.participants?.filter((p: any) => p.userId !== currentUserId) ?? [];
   const unread = conv.myParticipant?.unreadCount ?? 0;
@@ -333,46 +337,57 @@ function ConvItem({
     : (others[0]?.user.name ?? others[0]?.user.email ?? conv.subject);
 
   return (
-    <button onClick={onClick}
-      className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors rounded-xl mx-1",
-        active ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"
-      )}
-    >
-      {/* avatar */}
-      <div className="relative mt-0.5 shrink-0">
-        {others.length > 0
-          ? <UserAvatar name={others[0]?.user.name} email={others[0]?.user.email ?? ""} imageUrl={others[0]?.user.imageUrl} size="sm" />
-          : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-white/30"><Users className="h-4 w-4" /></div>
-        }
-        {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white text-[8.5px] font-bold text-black px-0.5">
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
-      </div>
-
-      {/* text */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-1">
-          <p className={cn(
-            "truncate text-[13px]",
-            unread > 0 ? "font-semibold text-white" : "font-normal text-white/60"
-          )}>
-            {name}
-          </p>
-          {conv.lastMessageAt && (
-            <span className="shrink-0 text-[10px] text-white/25">{timeAgo(conv.lastMessageAt)}</span>
+    <div className={cn(
+      "group relative mx-1 rounded-xl transition-colors",
+      active ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"
+    )}>
+      <button onClick={onClick}
+        className="flex w-full items-start gap-3 rounded-xl px-3 py-3 pr-10 text-left"
+      >
+        {/* avatar */}
+        <div className="relative mt-0.5 shrink-0">
+          {others.length > 0
+            ? <UserAvatar name={others[0]?.user.name} email={others[0]?.user.email ?? ""} imageUrl={others[0]?.user.imageUrl} size="sm" />
+            : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/8 text-white/30"><Users className="h-4 w-4" /></div>
+          }
+          {unread > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white text-[8.5px] font-bold text-black px-0.5">
+              {unread > 9 ? "9+" : unread}
+            </span>
           )}
         </div>
-        <p className={cn(
-          "truncate text-[11.5px] mt-0.5",
-          unread > 0 ? "text-white/50" : "text-white/25"
-        )}>
-          {conv.lastMessagePreview ?? conv.subject}
-        </p>
-      </div>
-    </button>
+
+        {/* text */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-1">
+            <p className={cn(
+              "truncate text-[13px]",
+              unread > 0 ? "font-semibold text-white" : "font-normal text-white/60"
+            )}>
+              {name}
+            </p>
+            {conv.lastMessageAt && (
+              <span className="shrink-0 text-[10px] text-white/25">{timeAgo(conv.lastMessageAt)}</span>
+            )}
+          </div>
+          <p className={cn(
+            "truncate text-[11.5px] mt-0.5",
+            unread > 0 ? "text-white/50" : "text-white/25"
+          )}>
+            {conv.lastMessagePreview ?? conv.subject}
+          </p>
+        </div>
+      </button>
+
+      {/* delete — hidden until you hover the row */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+        title="Delete conversation"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/20 opacity-0 transition-colors hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -705,6 +720,49 @@ export default function WorkspaceChatPage() {
     if (!confirm("Delete this message?")) return;
     await fetch(`/api/workspace-chat/messages/${msgId}`, { method: "DELETE" });
   };
+
+  /* delete an ENTIRE conversation (the new middle-panel delete button).
+     If you created it, this deletes it for every participant. If you
+     didn't, it just removes you from it — it disappears from your list
+     without touching it for anyone else. Either way the list and (if
+     it was open) the thread panel are updated immediately. */
+  const handleDeleteConversation = async (convId: string) => {
+    const conv = conversations.find(c => c.id === convId) ?? activeConv;
+    const isCreator = conv?.creatorId === myUserId;
+    const confirmed = confirm(
+      isCreator
+        ? "Delete this conversation for everyone? This can't be undone."
+        : "Remove this conversation from your inbox? Other participants will keep it."
+    );
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/workspace-chat/conversations/${convId}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert("Couldn't delete this conversation. Please try again.");
+      return;
+    }
+
+    setConversations(prev => prev.filter(c => c.id !== convId));
+
+    if (activeConvId === convId) {
+      setActiveConvId(null);
+      setActiveConv(null);
+      setMessages([]);
+      setSummaryOpen(false);
+      setAISummary(null);
+    }
+
+    if (lastConvStorageKey) {
+      try {
+        if (localStorage.getItem(lastConvStorageKey) === convId) {
+          localStorage.removeItem(lastConvStorageKey);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const handleFile   = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeConvId) return;
@@ -843,7 +901,8 @@ export default function WorkspaceChatPage() {
           ) : (
             filtered.map(conv => (
               <ConvItem key={conv.id} conv={conv} active={conv.id === activeConvId}
-                currentUserId={myUserId} onClick={() => openConversation(conv.id)} />
+                currentUserId={myUserId} onClick={() => openConversation(conv.id)}
+                onDelete={handleDeleteConversation} />
             ))
           )}
         </div>
@@ -906,6 +965,11 @@ export default function WorkspaceChatPage() {
                 <button onClick={() => patchConv(activeConvId!, { status: "ARCHIVED" })}
                   className="rounded-xl border border-white/8 p-1.5 text-white/25 hover:border-white/15 hover:text-white/60 transition-colors">
                   <Archive className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => handleDeleteConversation(activeConvId!)}
+                  title="Delete conversation"
+                  className="rounded-xl border border-white/8 p-1.5 text-white/25 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
