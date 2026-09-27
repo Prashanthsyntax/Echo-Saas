@@ -53,7 +53,11 @@ export async function POST(req: Request) {
   const body = await req.json();
   const workspaceId = body.workspaceId ?? ctx.workspaceId;
   const repoId = body.repoId;
-  const prNumber = body.prNumber;
+  const prNumberRaw = Number(body.prNumber);
+  if (!Number.isInteger(prNumberRaw) || prNumberRaw <= 0) {
+    return NextResponse.json({ error: "Invalid prNumber" }, { status: 400 });
+  }
+  const prNumber = prNumberRaw;
 
   const settings = await db.sentraSettings.findUnique({
     where: { workspaceId },

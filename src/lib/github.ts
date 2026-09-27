@@ -63,6 +63,22 @@ export async function fetchRepoLanguages(
   } catch { return {}; }
 }
 
+function isValidGitHubName(value: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(value);
+}
+
+function toSafeRepoRef(owner: string, repo: string): { owner: string; repo: string } | null {
+  if (!isValidGitHubName(owner) || !isValidGitHubName(repo)) return null;
+  return {
+    owner: encodeURIComponent(owner),
+    repo: encodeURIComponent(repo),
+  };
+}
+
+function toPositiveInt(value: number): number | null {
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export async function fetchRepoCommits(
   owner: string, repo: string, token?: string, perPage = 20
 ): Promise<GitHubCommit[]> {
@@ -70,9 +86,12 @@ export async function fetchRepoCommits(
     Accept: "application/vnd.github+json",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const safeRef = toSafeRepoRef(owner, repo);
+  if (!safeRef) return [];
+  const safePerPage = Math.max(1, Math.min(100, Math.trunc(perPage)));
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=${perPage}`,
+      `https://api.github.com/repos/${safeRef.owner}/${safeRef.repo}/commits?per_page=${safePerPage}`,
       { headers }
     );
     if (!res.ok) return [];
@@ -87,9 +106,11 @@ export async function fetchRepoPRs(
     Accept: "application/vnd.github+json",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const safeRef = toSafeRepoRef(owner, repo);
+  if (!safeRef) return [];
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=10`,
+      `https://api.github.com/repos/${safeRef.owner}/${safeRef.repo}/pulls?state=open&per_page=10`,
       { headers }
     );
     if (!res.ok) return [];
@@ -104,9 +125,12 @@ export async function fetchPRDiff(
     Accept: "application/vnd.github.diff",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const safeRef = toSafeRepoRef(owner, repo);
+  const safePrNumber = toPositiveInt(prNumber);
+  if (!safeRef || safePrNumber === null) return "";
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+      `https://api.github.com/repos/${safeRef.owner}/${safeRef.repo}/pulls/${safePrNumber}`,
       { headers }
     );
     if (!res.ok) return "";
@@ -121,9 +145,17 @@ export async function fetchFileContent(
     Accept: "application/vnd.github+json",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const safeRef = toSafeRepoRef(owner, repo);
+  if (!safeRef) return "";
+  const safePath = path
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  if (!safePath) return "";
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+      `https://api.github.com/repos/${safeRef.owner}/${safeRef.repo}/contents/${safePath}`,
       { headers }
     );
     if (!res.ok) return "";

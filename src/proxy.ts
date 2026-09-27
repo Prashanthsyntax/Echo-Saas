@@ -1,9 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isSentraApiRoute = createRouteMatcher([
-  "/api/sentra(.*)",
-]);
+const isSentraApiRoute = createRouteMatcher(["/api/sentra(.*)"]);
 
 const isProtectedRoute = createRouteMatcher([
   "/overview(.*)",
@@ -36,6 +34,9 @@ const isProtectedRoute = createRouteMatcher([
   "/api/sentra/fix(.*)",
   "/api/sentra/report(.*)",
   "/api/sentra/attack-paths/graph(.*)",
+  "/workspace-chat(.*)",
+  "/api/workspace-chat(.*)",
+  "/api/pusher(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
