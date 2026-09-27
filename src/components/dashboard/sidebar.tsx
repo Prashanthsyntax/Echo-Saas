@@ -18,7 +18,7 @@ import {
   Workflow,
   Network,
   MessageSquare,
-  Bot,
+  // Bot,
   Settings,
   Shield,
   CreditCard,
@@ -26,6 +26,7 @@ import {
   Kanban,
   CalendarDays,
   ShieldAlert,
+  Mail
 } from "lucide-react";
 import { Role } from "@prisma/client";
 
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/sentracode", label: "SentraCode", icon: ShieldAlert },
   { href: "/kanban", label: "Kanban", icon: Kanban },
+  { href: "/workspace-chat", label: "Messages", icon: Mail },
   { href: "/scheduler", label: "Scheduler", icon: CalendarDays },
   // { href: "/agents", label: "Agents", icon: Bot },
   { href: "/knowledge-health", label: "KG Health", icon: Shield },

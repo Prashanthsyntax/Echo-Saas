@@ -840,6 +840,8 @@ Overall score = average of all 6 category scores
 
 ### Prompt 1: High-Level System Overview Diagram
 
+![alt text](images/prisma.png)
+
 ```bash
 Create a professional software architecture diagram with a dark background (#0a0a0a).
 Title: "SentraCode — AI Application Security Platform"

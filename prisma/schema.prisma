@@ -66,6 +66,13 @@ model User {
   kanbanComments      KanbanComment[]
   createdEvents   SchedulerEvent[] @relation("EventCreator")
   eventAttendees  EventAttendee[]
+  createdConversations    Conversation[]            @relation("ConversationCreator")
+  conversationParticipants ConversationParticipant[]
+  sentMessages            Message[]                 @relation("MessageSender")
+  messageMentions         MessageMention[]
+  messageReactions        MessageReaction[]
+  messageReadReceipts     MessageReadReceipt[]
+  pollVotes               PollVote[]
 }
 
 model Workspace {
@@ -95,6 +102,7 @@ model Workspace {
   sentraRepos    SentraRepo[]
   sentraSettings SentraSettings?
   sentraPolicies  SentraPolicy[]
+  conversations Conversation[]
 }
 
 model Membership {
@@ -854,4 +862,171 @@ model SentraPolicy {
 
   workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId      String
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MessageType {
+  TEXT
+  FILE
+  VOICE
+  POLL
+  CODE
+  SYSTEM
+}
+
+enum DeliveryStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model Conversation {
+  id          String              @id @default(cuid())
+  subject     String
+  isGroup     Boolean             @default(false)
+  status      ConversationStatus  @default(ACTIVE)
+  lastMessageAt DateTime?
+  lastMessagePreview String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+
+  creator     User                @relation("ConversationCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId   String
+
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  isStarred      Boolean      @default(false)
+  isMuted        Boolean      @default(false)
+  lastReadAt     DateTime?
+  unreadCount    Int          @default(0)
+  joinedAt       DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String         @id @default(cuid())
+  content        String         @db.Text
+  type           MessageType    @default(TEXT)
+  deliveryStatus DeliveryStatus @default(SENT)
+  isEdited       Boolean        @default(false)
+  editedAt       DateTime?
+  isDeleted      Boolean        @default(false)
+  metadata       Json?          // for code: {language}, for voice: {duration}, for system: {action}
+  createdAt      DateTime       @default(now())
+
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+
+  sender         User           @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String
+
+  // threading
+  parentMessage  Message?       @relation("MessageThread", fields: [parentId], references: [id])
+  parentId       String?
+  replies        Message[]      @relation("MessageThread")
+
+  // mentions
+  mentions       MessageMention[]
+  reactions      MessageReaction[]
+  attachments    MessageAttachment[]
+  readReceipts   MessageReadReceipt[]
+  poll           Poll?
+}
+
+model MessageMention {
+  id        String  @id @default(cuid())
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([messageId, userId])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([messageId, userId, emoji])
+}
+
+model MessageAttachment {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  size      Int      // bytes
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+}
+
+model MessageReadReceipt {
+  id       String   @id @default(cuid())
+  readAt   DateTime @default(now())
+
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+
+  @@unique([messageId, userId])
+}
+
+model Poll {
+  id           String       @id @default(cuid())
+  question     String
+  allowMultiple Boolean     @default(false)
+  endsAt       DateTime?
+  createdAt    DateTime     @default(now())
+
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId    String       @unique
+
+  options      PollOption[]
+}
+
+model PollOption {
+  id     String     @id @default(cuid())
+  text   String
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollId String
+  votes  PollVote[]
+}
+
+model PollVote {
+  id       String     @id @default(cuid())
+  option   PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+
+  @@unique([optionId, userId])
 }
