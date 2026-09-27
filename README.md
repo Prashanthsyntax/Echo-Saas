@@ -52,7 +52,7 @@ Core product (video SaaS):
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-![alt text](image.png)
+![alt text](image1.png)
 
 #### System Architecture
 
