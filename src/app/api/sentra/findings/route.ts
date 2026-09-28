@@ -67,6 +67,7 @@ export async function GET(req: Request) {
       ...(severity ? { severity: severity as any } : {}),
       ...(status ? { status: status as any } : {}),
       ...(repoId ? { repoId } : {}),
+      ...(searchParams.get("repoId") ? { repoId: searchParams.get("repoId")! } : {}),
     },
     include: {
       repo: {

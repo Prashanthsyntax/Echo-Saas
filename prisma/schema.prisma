@@ -103,6 +103,11 @@ model Workspace {
   sentraSettings SentraSettings?
   sentraPolicies  SentraPolicy[]
   conversations Conversation[]
+  complianceControls    ComplianceControl[]
+  auditFindings         AuditFinding[]
+  auditRemediations     AuditRemediationEvent[]
+  auditConversations    AuditConversation[]
+  auditMemoryLogs       AuditMemoryLog[]
 }
 
 model Membership {
@@ -1032,4 +1037,157 @@ model PollVote {
   userId   String
 
   @@unique([optionId, userId])
+}
+
+enum ControlStatus {
+  NOT_TESTED
+  PASSING
+  FAILING
+  NEEDS_REVIEW
+}
+
+enum AuditFindingSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AuditFindingStatus {
+  OPEN
+  IN_REMEDIATION
+  REMEDIATED
+  ACCEPTED_RISK
+  RECURRING
+}
+
+enum ComplianceFramework {
+  SOC2
+  ISO27001
+  HIPAA
+  PCI_DSS
+  GDPR
+}
+
+// SOC 2 / ISO 27001 control definitions
+model ComplianceControl {
+  id              String             @id @default(cuid())
+  controlId       String             // "CC6.1", "A.9.1.1"
+  framework       ComplianceFramework
+  category        String             // "Logical Access", "Cryptography"
+  title           String
+  description     String             @db.Text
+  cweIds          Json               // string[] — CWE codes that map to this control
+  status          ControlStatus      @default(NOT_TESTED)
+  lastTestedAt    DateTime?
+  lastTestedBy    String?
+  evidenceNotes   String?            @db.Text
+  failCount       Int                @default(0)
+  passCount       Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  findings        AuditFinding[]
+  remediations    AuditRemediationEvent[]
+
+  @@unique([workspaceId, controlId, framework])
+}
+
+// Individual audit findings (linked to SentraCode findings OR manually added)
+model AuditFinding {
+  id              String               @id @default(cuid())
+  title           String
+  description     String               @db.Text
+  severity        AuditFindingSeverity
+  status          AuditFindingStatus   @default(OPEN)
+  rootCause       String?              @db.Text
+  affectedSystem  String?
+  auditorNotes    String?              @db.Text
+  evidence        String?              @db.Text
+  discoveredAt    DateTime             @default(now())
+  remediatedAt    DateTime?
+  dueDate         DateTime?
+  isRecurring     Boolean              @default(false)
+  recurrenceCount Int                  @default(0)
+  cweId           String?
+
+  // optional link to SentraCode finding
+  sentraFindingId String?
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  control         ComplianceControl?   @relation(fields: [controlId], references: [id])
+  controlId       String?
+
+  remediations    AuditRemediationEvent[]
+  memoryLogs      AuditMemoryLog[]
+}
+
+// Remediation history — what was done and when
+model AuditRemediationEvent {
+  id              String               @id @default(cuid())
+  action          String               // "Patched dependency", "Added input validation"
+  notes           String?              @db.Text
+  performedBy     String
+  outcome         String               // "RESOLVED" | "PARTIAL" | "DEFERRED"
+  evidenceUrl     String?
+  performedAt     DateTime             @default(now())
+
+  finding         AuditFinding?        @relation(fields: [findingId], references: [id])
+  findingId       String?
+
+  control         ComplianceControl?   @relation(fields: [controlId], references: [id])
+  controlId       String?
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+}
+
+// Agent conversation history
+model AuditConversation {
+  id              String                   @id @default(cuid())
+  title           String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  messages        AuditConversationMessage[]
+}
+
+model AuditConversationMessage {
+  id              String            @id @default(cuid())
+  role            String            // "user" | "agent"
+  content         String            @db.Text
+  memoriesUsed    Json?             // AuditMemory[] recalled for this response
+  controlsReferenced Json?          // string[] controlIds
+  findingsReferenced Json?          // string[] findingIds
+  interactionNumber Int             @default(0)
+  createdAt       DateTime          @default(now())
+
+  conversation    AuditConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId  String
+}
+
+// Log of every memory write — feeds the Memory Timeline panel
+model AuditMemoryLog {
+  id              String       @id @default(cuid())
+  memoryType      String       // "finding" | "remediation" | "control_test" | "agent_insight"
+  summary         String       @db.Text
+  chromaId        String?      // ID in ChromaDB
+  controlId       String?
+  findingId       String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+
+  finding         AuditFinding? @relation(fields: [findingId], references: [id])
+
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
 }

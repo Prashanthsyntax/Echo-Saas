@@ -1,4 +1,4 @@
- /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import {
@@ -8,6 +8,7 @@ import {
   computeRiskScore,
 } from "@/lib/github";
 import { requireSentraAuth } from "@/lib/sentra-cli-auth";
+import { detectComplianceGaps } from "@/lib/audit-gap-detector";
 
 const SCANNER_URL = process.env.SENTRA_SCANNER_URL ?? "http://localhost:8001";
 
@@ -422,5 +423,16 @@ async function runFullScan(
       where: { id: repo.id },
       data: { scanStatus: "FAILED" },
     });
+  }
+
+  try {
+    const gaps = await detectComplianceGaps(scanId, workspaceId);
+    if (gaps.length > 0) {
+      console.log(
+        `AuditReady: detected ${gaps.length} compliance gaps from scan ${scanId}`,
+      );
+    }
+  } catch (err) {
+    console.warn("Compliance gap detection failed:", err);
   }
 }

@@ -9,6 +9,7 @@ import {
   GitPullRequest,
   Settings,
   ShieldCheck,
+  ClipboardCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OverviewPage } from "./pages/overview-page";
@@ -18,6 +19,7 @@ import { VulnerabilitiesPage } from "./pages/vulnerabilities-page";
 import { PullRequestsPage } from "./pages/pull-requests-page";
 import { SentraSettingsPage } from "./pages/sentra-settings-page";
 import { AttackGraphPage } from "./pages/attack-graph-page";
+import { CompliancePage } from "./pages/compliance-page";
 
 type Page =
   | "overview"
@@ -26,6 +28,7 @@ type Page =
   | "vulnerabilities"
   | "pull-requests"
   | "attack-graph"
+  | "compliance"
   | "settings";
 
 const NAV = [
@@ -43,6 +46,7 @@ const NAV = [
       { id: "vulnerabilities", label: "Vulnerabilities", Icon: Bug },
       { id: "pull-requests", label: "Pull requests", Icon: GitPullRequest },
       { id: "attack-graph", label: "Security posture", Icon: ShieldCheck },
+      { id: "compliance", label: "Compliance", Icon: ClipboardCheck },
     ],
   },
   {
@@ -134,6 +138,7 @@ export function SentraCodeApp() {
           {page === "vulnerabilities" && <VulnerabilitiesPage />}
           {page === "pull-requests" && <PullRequestsPage />}
           {page === "attack-graph" && <AttackGraphPage />}
+          {page === "compliance" && <CompliancePage />}
           {page === "settings" && <SentraSettingsPage onNavigate={go} />}
         </div>
       </div>
