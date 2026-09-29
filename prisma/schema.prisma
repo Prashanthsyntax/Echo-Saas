@@ -108,6 +108,10 @@ model Workspace {
   auditRemediations     AuditRemediationEvent[]
   auditConversations    AuditConversation[]
   auditMemoryLogs       AuditMemoryLog[]
+  kgSources   KGSource[]
+  kgNodes     KGNode[]
+  kgEdges     KGEdge[]
+  kgGraph     KGGraph?
 }
 
 model Membership {
@@ -1190,4 +1194,244 @@ model AuditMemoryLog {
 
   workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId     String
+}
+
+enum KGNodeType {
+  CONCEPT
+  ENTITY
+  PERSON
+  ORGANIZATION
+  TECHNOLOGY
+  EVENT
+  LOCATION
+  THEORY
+  PROCESS
+  ATTRIBUTE
+  CUSTOM
+}
+
+enum KGEdgeType {
+  IS_A           // inheritance / taxonomy
+  HAS_A          // composition
+  USES           // usage / dependency
+  CAUSES         // causality
+  PART_OF        // membership
+  RELATED_TO     // general association
+  DEFINED_BY     // definition source
+  OPPOSES        // contrast
+  PRECEDES       // temporal / sequential
+  IMPLEMENTS     // concrete realization
+  CUSTOM
+}
+
+enum KGNodeStatus {
+  ACTIVE
+  FLAGGED       // low confidence — needs review
+  MERGED        // merged into another node
+  DELETED
+}
+
+enum KGSourceType {
+  DOCUMENT
+  URL
+  VIDEO_TRANSCRIPT
+  MANUAL
+  RAG_CHUNK
+}
+
+// ── Source documents ────────────────────────────────────────────────
+model KGSource {
+  id            String       @id @default(cuid())
+  name          String
+  sourceType    KGSourceType
+  url           String?
+  storagePath   String?
+  mimeType      String?
+  pageCount     Int?
+  chunkCount    Int          @default(0)
+  language      String       @default("en")
+  processingStatus String    @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
+  errorMessage  String?
+  extractedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String
+
+  chunks        KGChunk[]
+  nodes         KGNode[]
+  edges         KGEdge[]
+}
+
+// ── Raw extracted text chunks (source of truth) ─────────────────────
+model KGChunk {
+  id            String    @id @default(cuid())
+  content       String    @db.Text
+  chunkIndex    Int
+  pageNumber    Int?
+  startChar     Int?
+  endChar       Int?
+  embedding     Json?     // float[] — 384-dim mpnet embedding
+  createdAt     DateTime  @default(now())
+
+  source        KGSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId      String
+
+  nodeGrounding KGNodeChunk[]
+  edgeGrounding KGEdgeChunk[]
+
+  @@index([sourceId, chunkIndex])
+}
+
+// ── Graph nodes ─────────────────────────────────────────────────────
+model KGNode {
+  id              String        @id @default(cuid())
+  label           String        // canonical name e.g. "React"
+  aliases         Json          @default("[]") // ["ReactJS", "React.js"]
+  nodeType        KGNodeType    @default(CONCEPT)
+  status          KGNodeStatus  @default(ACTIVE)
+  description     String?       @db.Text
+  confidence      Float         @default(1.0) // 0.0–1.0
+  embedding       Json?         // float[] — 384-dim
+  chromaId        String?       // ID in ChromaDB for semantic search
+
+  // provenance
+  extractedBy     String        @default("system") // "system" | "user" | "groq"
+  verifiedBy      String?       // "groq" | "user"
+  extractionMethod String?      // "ner" | "relation" | "manual"
+
+  // theory cache — generated on demand, cached
+  theoryCache     Json?         // {definition, concepts, examples, relationships, generatedAt}
+
+  // position for saved layout
+  posX            Float?
+  posY            Float?
+  color           String?       // user-assigned color
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  primarySource   KGSource?     @relation(fields: [primarySourceId], references: [id])
+  primarySourceId String?
+
+  // edges
+  outgoingEdges   KGEdge[]      @relation("EdgeSource")
+  incomingEdges   KGEdge[]      @relation("EdgeTarget")
+
+  // source grounding — which chunks mention this node
+  chunks          KGNodeChunk[]
+  versions        KGNodeVersion[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, nodeType])
+}
+
+// ── Graph edges ─────────────────────────────────────────────────────
+model KGEdge {
+  id              String     @id @default(cuid())
+  edgeType        KGEdgeType @default(RELATED_TO)
+  label           String?    // custom label e.g. "inherits from"
+  confidence      Float      @default(1.0)
+  weight          Float      @default(1.0)
+  isDirected      Boolean    @default(true)
+  description     String?    @db.Text
+
+  // provenance
+  extractedBy     String     @default("system")
+  verifiedBy      String?
+  extractionMethod String?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  source          KGNode     @relation("EdgeSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId        String
+
+  target          KGNode     @relation("EdgeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  targetId        String
+
+  primarySource   KGSource?  @relation(fields: [primarySourceId], references: [id])
+  primarySourceId String?
+
+  chunks          KGEdgeChunk[]
+
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId     String
+
+  @@unique([sourceId, targetId, edgeType])
+  @@index([workspaceId])
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+// ── Source grounding join tables ─────────────────────────────────────
+model KGNodeChunk {
+  id         String   @id @default(cuid())
+  spanStart  Int?
+  spanEnd    Int?
+  confidence Float    @default(1.0)
+  mentionText String? // exact text span that mentioned this node
+
+  node       KGNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  nodeId     String
+
+  chunk      KGChunk  @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  chunkId    String
+
+  @@unique([nodeId, chunkId])
+}
+
+model KGEdgeChunk {
+  id         String   @id @default(cuid())
+  confidence Float    @default(1.0)
+  evidenceText String? @db.Text // sentence that supports this edge
+
+  edge       KGEdge   @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  edgeId     String
+
+  chunk      KGChunk  @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  chunkId    String
+
+  @@unique([edgeId, chunkId])
+}
+
+// ── Versioning ───────────────────────────────────────────────────────
+model KGNodeVersion {
+  id          String   @id @default(cuid())
+  versionNum  Int
+  label       String
+  description String?  @db.Text
+  nodeType    String
+  confidence  Float
+  aliases     Json
+  changedBy   String   // "system" | userId
+  changeReason String?
+  snapshot    Json     // full node snapshot
+  createdAt   DateTime @default(now())
+
+  node        KGNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  nodeId      String
+
+  @@index([nodeId, versionNum])
+}
+
+// ── Graph-level metadata ─────────────────────────────────────────────
+model KGGraph {
+  id            String   @id @default(cuid())
+  name          String   @default("Knowledge Graph")
+  description   String?
+  nodeCount     Int      @default(0)
+  edgeCount     Int      @default(0)
+  sourceCount   Int      @default(0)
+  lastBuiltAt   DateTime?
+  layoutSaved   Json?    // saved node positions {nodeId: {x, y}}
+  filterPresets Json?    // saved filter configurations
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String    @unique
 }

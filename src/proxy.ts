@@ -38,6 +38,7 @@ const isProtectedRoute = createRouteMatcher([
   "/api/workspace-chat(.*)",
   "/api/pusher(.*)",
   "/api/audit-ready(.*)",
+  "/api/audit-ready/conversations(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

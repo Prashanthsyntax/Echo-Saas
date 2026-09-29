@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/purity */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -6,13 +9,13 @@ import {
   Shield, ShieldCheck, Sparkles, ArrowUp, Loader2,
   CheckCircle2, AlertTriangle, Database, Copy, Check,
   Plus, PanelRightClose, PanelRightOpen, Zap, Activity,
-  Search, TrendingUp, ListChecks, X,
+  Search, TrendingUp, ListChecks, MessageSquare, Trash2,
+  Clock, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MarkdownMessage } from "../markdown-message";
-import { useAuditAlerts } from "@/hooks/use-audit-alerts";
+import { MarkdownMessage } from "@/components/sentracode/markdown-message";
 
-/* ── types ──────────────────────────────────────────────────────────── */
+/* ── types ─────────────────────────────────────────────────────────── */
 interface Memory {
   summary:         string;
   memory_type:     string;
@@ -38,36 +41,54 @@ interface Message {
   interactionNumber: number;
   memoriesUsed?:     Memory[];
   isError?:          boolean;
+  createdAt?:        string;
 }
 
-/* ── constants ───────────────────────────────────────────────────────── */
+interface Conversation {
+  id:        string;
+  title:     string | null;
+  updatedAt: string;
+  messages:  { content: string; role: string; createdAt: string }[];
+  _count:    { messages: number };
+}
+
+/* ── constants ──────────────────────────────────────────────────────── */
 const STATUS_STYLE = {
-  PASSING:      { dot: "bg-emerald-400", text: "text-emerald-400", ring: "#34d399", label: "Passing"      },
-  FAILING:      { dot: "bg-red-400",     text: "text-red-400",     ring: "#f87171", label: "Failing"      },
-  NEEDS_REVIEW: { dot: "bg-amber-400",   text: "text-amber-400",   ring: "#fbbf24", label: "Needs review" },
-  NOT_TESTED:   { dot: "bg-white/25",    text: "text-white/35",    ring: "#ffffff40", label: "Not tested" },
+  PASSING:      { dot: "bg-emerald-400", text: "text-emerald-400", label: "Passing"      },
+  FAILING:      { dot: "bg-red-400",     text: "text-red-400",     label: "Failing"      },
+  NEEDS_REVIEW: { dot: "bg-amber-400",   text: "text-amber-400",   label: "Needs review" },
+  NOT_TESTED:   { dot: "bg-white/25",    text: "text-white/35",    label: "Not tested"   },
 } as const;
 
 const STARTERS = [
-  { icon: ShieldCheck,   title: "Renewal readiness",    prompt: "Are we ready for our SOC 2 renewal?" },
-  { icon: AlertTriangle, title: "Likely to fail",       prompt: "Which controls are most likely to fail?" },
-  { icon: TrendingUp,    title: "Recurring patterns",   prompt: "Any patterns in our recurring findings?" },
-  { icon: Search,        title: "Control deep-dive",    prompt: "Summarise our audit history for CC6.6" },
+  { icon: ShieldCheck,   title: "Renewal readiness",  prompt: "Are we ready for our SOC 2 renewal?"         },
+  { icon: AlertTriangle, title: "Likely to fail",     prompt: "Which controls are most likely to fail?"     },
+  { icon: TrendingUp,    title: "Recurring patterns", prompt: "Any patterns in our recurring findings?"     },
+  { icon: Search,        title: "Control deep-dive",  prompt: "Summarise our audit history for CC6.6"       },
 ];
 
 const NO_SCROLLBAR = "no-scrollbar overflow-y-auto";
 
-/* ── small pieces ────────────────────────────────────────────────────── */
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m    = Math.floor(diff / 60000);
+  const h    = Math.floor(m / 60);
+  const d    = Math.floor(h / 24);
+  if (d > 0)  return `${d}d ago`;
+  if (h > 0)  return `${h}h ago`;
+  if (m > 0)  return `${m}m ago`;
+  return "just now";
+}
+
+/* ── small components ───────────────────────────────────────────────── */
 function ReadinessRing({ pct }: { pct: number }) {
-  const r = 34;
-  const c = 2 * Math.PI * r;
+  const r = 34, c = 2 * Math.PI * r;
   const color = pct >= 80 ? "#34d399" : pct >= 60 ? "#fbbf24" : "#f87171";
   return (
     <div className="relative h-[88px] w-[88px] shrink-0">
       <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
         <circle cx="40" cy="40" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
-        <circle
-          cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+        <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c}
           style={{ transition: "stroke-dashoffset 900ms cubic-bezier(.2,.8,.2,1), stroke 300ms" }}
         />
@@ -109,9 +130,8 @@ function MemoryCard({ memory }: { memory: Memory }) {
     control_test:  <Shield        className="h-3 w-3 text-blue-400"    />,
     agent_insight: <Sparkles      className="h-3 w-3 text-violet-400"  />,
   };
-  const pct = Math.round((memory.relevance_score ?? 0) * 100);
+  const pct      = Math.round((memory.relevance_score ?? 0) * 100);
   const barColor = pct > 80 ? "#34d399" : pct > 60 ? "#fbbf24" : "#f87171";
-
   return (
     <div className="space-y-2 rounded-xl border border-white/[0.05] bg-white/[0.02] p-3 transition-colors hover:border-white/10">
       <div className="flex items-center justify-between gap-2">
@@ -150,11 +170,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {}
+        try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
       }}
       className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/70"
     >
@@ -174,7 +190,6 @@ function ChatMessage({ msg }: { msg: Message }) {
       </div>
     );
   }
-
   return (
     <div className="ar-fade flex gap-3.5">
       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-white/[0.10] to-white/[0.02]">
@@ -186,8 +201,10 @@ function ChatMessage({ msg }: { msg: Message }) {
           <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9.5px] text-white/25">
             #{msg.interactionNumber}
           </span>
+          {msg.createdAt && (
+            <span className="text-[9.5px] text-white/20">{timeAgo(msg.createdAt)}</span>
+          )}
         </div>
-
         {msg.isError ? (
           <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-[13px] text-red-300">
             {msg.content}
@@ -197,7 +214,6 @@ function ChatMessage({ msg }: { msg: Message }) {
             <MarkdownMessage content={msg.content} />
           </div>
         )}
-
         {!msg.isError && (
           <div className="mt-2 flex items-center gap-1">
             <CopyButton text={msg.content} />
@@ -222,12 +238,63 @@ function TypingIndicator() {
       </div>
       <div className="flex items-center gap-3 pt-1.5">
         <div className="flex items-center gap-1">
-          <span className="ar-dot h-1.5 w-1.5 rounded-full bg-white/50" style={{ animationDelay: "0ms" }} />
-          <span className="ar-dot h-1.5 w-1.5 rounded-full bg-white/50" style={{ animationDelay: "150ms" }} />
-          <span className="ar-dot h-1.5 w-1.5 rounded-full bg-white/50" style={{ animationDelay: "300ms" }} />
+          {[0, 150, 300].map(d => (
+            <span key={d} className="ar-dot h-1.5 w-1.5 rounded-full bg-white/50" style={{ animationDelay: `${d}ms` }} />
+          ))}
         </div>
         <span className="text-[12.5px] text-white/30">Recalling memories and reasoning…</span>
       </div>
+    </div>
+  );
+}
+
+function EmptyPanel({ icon: Icon, title, body }: { icon: React.ComponentType<{ className?: string }>; title: string; body: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-14 text-center">
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.02]">
+        <Icon className="h-4 w-4 text-white/20" />
+      </div>
+      <p className="text-[12px] font-medium text-white/40">{title}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-white/20">{body}</p>
+    </div>
+  );
+}
+
+/* ── Conversation sidebar item ──────────────────────────────────────── */
+function ConvItem({
+  conv, active, onSelect, onDelete,
+}: {
+  conv: Conversation; active: boolean;
+  onSelect: () => void; onDelete: (e: React.MouseEvent) => void;
+}) {
+  const lastMsg = conv.messages?.[0];
+  const preview = lastMsg?.content?.slice(0, 60) ?? conv.title ?? "New conversation";
+  return (
+    <div
+      className={cn(
+        "group relative mx-1 flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 transition-colors",
+        active ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"
+      )}
+      onClick={onSelect}
+    >
+      <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/25" />
+      <div className="min-w-0 flex-1 pr-5">
+        <p className="truncate text-[12.5px] font-medium text-white/70">
+          {conv.title ?? preview}
+        </p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <Clock className="h-3 w-3 text-white/20" />
+          <span className="text-[10.5px] text-white/25">{timeAgo(conv.updatedAt)}</span>
+          <span className="text-white/15">·</span>
+          <span className="text-[10.5px] text-white/25">{conv._count.messages} msgs</span>
+        </div>
+      </div>
+      <button
+        onClick={onDelete}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-white/15 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -237,8 +304,13 @@ function TypingIndicator() {
 ═══════════════════════════════════════════════════════════════════════ */
 export function CompliancePage() {
   const { workspaceId } = useWorkspace();
-  const { latestAlert, dismissAlert } = useAuditAlerts(workspaceId);
 
+  // conversation list
+  const [conversations,  setConversations ] = useState<Conversation[]>([]);
+  const [convLoading,    setConvLoading   ] = useState(true);
+  const [sidebarOpen,    setSidebarOpen   ] = useState(true);
+
+  // active chat
   const [messages,       setMessages      ] = useState<Message[]>([]);
   const [input,          setInput         ] = useState("");
   const [sending,        setSending       ] = useState(false);
@@ -250,32 +322,96 @@ export function CompliancePage() {
   const [seeded,         setSeeded        ] = useState(false);
   const [panelOpen,      setPanelOpen     ] = useState(true);
   const [tab,            setTab           ] = useState<"controls" | "memory">("controls");
+  const [loadingConv,    setLoadingConv   ] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
 
+  /* auto scroll */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, sending]);
 
+  /* resize textarea */
   const resizeInput = useCallback(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, []);
-
   useEffect(() => { resizeInput(); }, [input, resizeInput]);
 
+  /* fetch conversation list */
+  const fetchConversations = useCallback(async () => {
+    if (!workspaceId) return;
+    setConvLoading(true);
+    try {
+      const res  = await fetch(`/api/audit-ready/conversations?workspaceId=${workspaceId}`);
+      const data = await res.json();
+      setConversations(data.conversations ?? []);
+    } finally {
+      setConvLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  /* load a past conversation */
+  const loadConversation = async (convId: string) => {
+    setLoadingConv(true);
+    setMessages([]);
+    setConversationId(convId);
+    setLatestMemories([]);
+
+    try {
+      const res  = await fetch(`/api/audit-ready/conversations/${convId}`);
+      const data = await res.json();
+
+      const msgs: Message[] = (data.conversation.messages ?? []).map((m: any) => ({
+        id:                m.id,
+        role:              m.role as "user" | "agent",
+        content:           m.content,
+        interactionNumber: m.interactionNumber,
+        memoriesUsed:      m.memoriesUsed ?? [],
+        createdAt:         m.createdAt,
+      }));
+
+      setMessages(msgs);
+      setInteractionNum((msgs.length ?? 0) + 1);
+
+      // restore latest memories from last agent message
+      const lastAgent = [...msgs].reverse().find(m => m.role === "agent");
+      if (lastAgent?.memoriesUsed) setLatestMemories(lastAgent.memoriesUsed);
+    } finally {
+      setLoadingConv(false);
+    }
+  };
+
+  /* new chat */
   const newChat = () => {
     setMessages([]);
     setConversationId(null);
     setInteractionNum(1);
     setLatestMemories([]);
+    setControlsStatus([]);
     setInput("");
-    inputRef.current?.focus();
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  /* delete conversation */
+  const deleteConversation = async (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation();
+    if (!confirm("Delete this conversation?")) return;
+    await fetch("/api/audit-ready/conversations", {
+      method:  "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ conversationId: convId }),
+    });
+    setConversations(prev => prev.filter(c => c.id !== convId));
+    if (conversationId === convId) newChat();
+  };
+
+  /* seed data */
   const seedData = async () => {
     if (!workspaceId) return;
     setSeeding(true);
@@ -286,75 +422,71 @@ export function CompliancePage() {
         body:    JSON.stringify({ workspaceId }),
       });
       if (res.ok) setSeeded(true);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSeeding(false);
-    }
+    } finally { setSeeding(false); }
   };
 
+  /* send message */
   const sendMessage = async (override?: string) => {
     const text = (override ?? input).trim();
     if (!text || !workspaceId || sending) return;
     setSending(true);
 
-    setMessages(prev => [
-      ...prev,
-      { id: `user_${Date.now()}`, role: "user", content: text, interactionNumber: interactionNum },
-    ]);
+    const tempUserMsg: Message = {
+      id:                `user_${Date.now()}`,
+      role:              "user",
+      content:           text,
+      interactionNumber: interactionNum,
+      createdAt:         new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempUserMsg]);
     setInput("");
 
     try {
-      const res = await fetch("/api/audit-ready/chat", {
+      const res  = await fetch("/api/audit-ready/chat", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ workspaceId, message: text, conversationId }),
       });
-
       const data = await res.json().catch(() => null);
 
       if (res.ok && data) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id:                data.message?.id ?? `agent_${Date.now()}`,
-            role:              "agent",
-            content:           data.answer,
-            interactionNumber: data.interactionNumber,
-            memoriesUsed:      data.memoriesUsed ?? [],
-          },
-        ]);
+        const agentMsg: Message = {
+          id:                data.message?.id ?? `agent_${Date.now()}`,
+          role:              "agent",
+          content:           data.answer,
+          interactionNumber: data.interactionNumber,
+          memoriesUsed:      data.memoriesUsed ?? [],
+          createdAt:         new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, agentMsg]);
+
+        const isNew = !conversationId;
         setConversationId(data.conversationId);
         setInteractionNum(data.interactionNumber + 1);
         setLatestMemories(data.memoriesUsed ?? []);
         setControlsStatus(data.controlsStatus ?? []);
+
+        // refresh sidebar
+        fetchConversations();
+
+        // if it was a new conversation, select it in sidebar
+        if (isNew) setConversationId(data.conversationId);
       } else {
-        setMessages(prev => [
-          ...prev,
-          {
-            id:                `err_${Date.now()}`,
-            role:              "agent",
-            content:           data?.error ?? "Something went wrong. Please try again.",
-            interactionNumber: interactionNum,
-            isError:           true,
-          },
-        ]);
+        setMessages(prev => [...prev, {
+          id: `err_${Date.now()}`, role: "agent",
+          content: data?.error ?? "Something went wrong.",
+          interactionNumber: interactionNum, isError: true,
+        }]);
       }
-    } catch (err) {
-      console.error(err);
-      setMessages(prev => [
-        ...prev,
-        {
-          id:                `err_${Date.now()}`,
-          role:              "agent",
-          content:           "Network error. Check your connection and try again.",
-          interactionNumber: interactionNum,
-          isError:           true,
-        },
-      ]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: `err_${Date.now()}`, role: "agent",
+        content: "Network error. Check your connection.",
+        interactionNumber: interactionNum, isError: true,
+      }]);
     } finally {
       setSending(false);
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
@@ -362,13 +494,12 @@ export function CompliancePage() {
   const failingCount = controlsStatus.filter(c => c.status === "FAILING").length;
   const reviewCount  = controlsStatus.filter(c => c.status === "NEEDS_REVIEW").length;
   const readinessPct = controlsStatus.length > 0
-    ? Math.round((passingCount / controlsStatus.length) * 100)
-    : null;
-
+    ? Math.round((passingCount / controlsStatus.length) * 100) : null;
   const canSend = input.trim().length > 0 && !sending;
 
   return (
     <div className="flex h-full overflow-hidden text-white" style={{ backgroundColor: "#0a0a0a" }}>
+
       <style>{`
         .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none}
         .no-scrollbar::-webkit-scrollbar{display:none}
@@ -378,7 +509,54 @@ export function CompliancePage() {
         .ar-dot{animation:ar-dot 1.1s infinite ease-in-out}
       `}</style>
 
-      {/* ── CHAT COLUMN ─────────────────────────────────────────────── */}
+      {/* ── HISTORY SIDEBAR ──────────────────────────────────────────── */}
+      <div
+        className={cn(
+          "shrink-0 overflow-hidden border-r border-white/[0.06] transition-all duration-300",
+          sidebarOpen ? "w-[220px]" : "w-0 border-r-0"
+        )}
+        style={{ backgroundColor: "#0c0c0c" }}
+      >
+        <div className="flex h-full w-[220px] flex-col">
+          {/* sidebar header */}
+          <div className="flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.06] px-3">
+            <span className="text-[11.5px] font-semibold text-white/50">Conversations</span>
+            <button
+              onClick={newChat}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+              title="New chat"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* conversation list */}
+          <div className={cn("flex-1 py-1.5 space-y-0.5", NO_SCROLLBAR)}>
+            {convLoading ? (
+              <div className="flex h-24 items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin text-white/20" />
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center px-3">
+                <MessageSquare className="h-5 w-5 text-white/10 mb-2" />
+                <p className="text-[11px] text-white/20">No conversations yet</p>
+              </div>
+            ) : (
+              conversations.map(conv => (
+                <ConvItem
+                  key={conv.id}
+                  conv={conv}
+                  active={conv.id === conversationId}
+                  onSelect={() => loadConversation(conv.id)}
+                  onDelete={(e) => deleteConversation(e, conv.id)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── CHAT COLUMN ──────────────────────────────────────────────── */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {/* ambient glow */}
         <div
@@ -388,23 +566,33 @@ export function CompliancePage() {
 
         {/* header */}
         <header className="relative z-10 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0a0a]/70 px-5 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* toggle history sidebar */}
+            <button
+              onClick={() => setSidebarOpen(o => !o)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+            >
+              <MessageSquare className="h-4 w-4" />
+            </button>
+            <div className="h-4 w-px bg-white/[0.08]" />
             <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.10] to-white/[0.02]">
               <ShieldCheck className="h-4 w-4 text-white/80" />
             </div>
             <div className="leading-tight">
               <h1 className="text-[13.5px] font-semibold tracking-tight">AuditReady</h1>
-              <p className="text-[10.5px] text-white/30">SOC 2 copilot · interaction #{interactionNum}</p>
+              <p className="text-[10.5px] text-white/30">
+                SOC 2 copilot · interaction #{interactionNum}
+                {conversationId && (
+                  <span className="ml-1.5 font-mono text-white/15">#{conversationId.slice(-6)}</span>
+                )}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {!seeded ? (
-              <button
-                onClick={seedData}
-                disabled={seeding}
-                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/80 disabled:opacity-40"
-              >
+              <button onClick={seedData} disabled={seeding}
+                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/80 disabled:opacity-40">
                 {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
                 {seeding ? "Loading…" : "Load audit history"}
               </button>
@@ -414,111 +602,42 @@ export function CompliancePage() {
                 <span className="text-[11.5px] text-emerald-400">History loaded</span>
               </div>
             )}
-            <button
-              onClick={newChat}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/80"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New chat
+            <button onClick={newChat}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/80">
+              <Plus className="h-3.5 w-3.5" /> New chat
             </button>
-            <button
-              onClick={() => setPanelOpen(o => !o)}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
-              aria-label="Toggle insights panel"
-            >
+            <button onClick={() => setPanelOpen(o => !o)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80">
               {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
             </button>
           </div>
         </header>
 
-        {/* proactive alert banner */}
-        {latestAlert && (
-          <div className="ar-fade relative z-10 shrink-0 border-b border-red-500/20 bg-red-500/[0.05] px-5 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-red-500/15">
-                  <Zap className="h-3.5 w-3.5 text-red-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-0.5 flex items-center gap-2">
-                    <p className="text-[12px] font-semibold text-red-400">
-                      ⚠ Proactive compliance alert
-                    </p>
-                    {latestAlert.recurringGaps > 0 && (
-                      <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[9.5px] font-medium text-red-400">
-                        RECURRING
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[12px] leading-relaxed text-white/55">
-                    New scan detected{" "}
-                    <strong className="text-white/75">{latestAlert.criticalGaps} critical</strong> issue
-                    {latestAlert.criticalGaps !== 1 ? "s" : ""} breaking SOC 2{" "}
-                    <strong className="text-white/75">{latestAlert.topGap?.controlId}</strong>.
-                    {latestAlert.topGap?.isRecurring && (
-                      <>
-                        {" "}Previously seen as:{" "}
-                        <span className="text-red-400/70">
-                          &ldquo;{latestAlert.topGap.previousFinding}&rdquo;
-                        </span>
-                        . This is a recurring pattern.
-                      </>
-                    )}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setInput(
-                        `Tell me about the new compliance gap in ${latestAlert.topGap?.controlId} — is this a recurring issue?`
-                      );
-                      dismissAlert();
-                      inputRef.current?.focus();
-                    }}
-                    className="mt-1.5 text-[11px] text-red-400/70 underline transition-colors hover:text-red-400"
-                  >
-                    Ask AuditReady about this →
-                  </button>
-                </div>
-              </div>
-              <button
-                onClick={dismissAlert}
-                aria-label="Dismiss alert"
-                className="shrink-0 text-white/20 transition-colors hover:text-white/50"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* messages */}
         <div className={cn("relative flex-1", NO_SCROLLBAR)}>
-          {messages.length === 0 ? (
+          {loadingConv ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-white/30" />
+                <p className="text-[12.5px] text-white/25">Loading conversation…</p>
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 pb-8 text-center">
               <div className="ar-fade mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.10] to-white/[0.02] shadow-[0_0_60px_rgba(120,119,198,0.25)]">
                 <ShieldCheck className="h-6 w-6 text-white/80" />
               </div>
-              <h2
-                className="ar-fade bg-gradient-to-b from-white to-white/50 bg-clip-text text-[28px] font-semibold tracking-tight text-transparent"
-                style={{ animationDelay: "60ms" }}
-              >
+              <h2 className="ar-fade bg-gradient-to-b from-white to-white/50 bg-clip-text text-[28px] font-semibold tracking-tight text-transparent" style={{ animationDelay: "60ms" }}>
                 Audit-ready, always.
               </h2>
-              <p
-                className="ar-fade mt-3 max-w-md text-[13.5px] leading-relaxed text-white/35"
-                style={{ animationDelay: "120ms" }}
-              >
+              <p className="ar-fade mt-3 max-w-md text-[13.5px] leading-relaxed text-white/35" style={{ animationDelay: "120ms" }}>
                 Ask anything about your SOC 2 posture. I remember your full audit history and cross-check it against live security findings.
               </p>
-
               <div className="mt-8 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
                 {STARTERS.map((s, i) => (
-                  <button
-                    key={s.title}
-                    onClick={() => sendMessage(s.prompt)}
-                    disabled={!workspaceId}
+                  <button key={s.title} onClick={() => sendMessage(s.prompt)} disabled={!workspaceId}
                     className="ar-fade group flex items-start gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.05] disabled:opacity-40"
-                    style={{ animationDelay: `${180 + i * 60}ms` }}
-                  >
+                    style={{ animationDelay: `${180 + i * 60}ms` }}>
                     <s.icon className="mt-0.5 h-4 w-4 shrink-0 text-white/40 transition-colors group-hover:text-white/80" />
                     <div>
                       <p className="text-[12.5px] font-medium text-white/80">{s.title}</p>
@@ -539,10 +658,8 @@ export function CompliancePage() {
 
         {/* input */}
         <div className="relative z-10 shrink-0 px-6 pb-4 pt-2">
-          <div
-            className="pointer-events-none absolute inset-x-0 -top-10 h-10"
-            style={{ background: "linear-gradient(to top, #0a0a0a, transparent)" }}
-          />
+          <div className="pointer-events-none absolute inset-x-0 -top-10 h-10"
+            style={{ background: "linear-gradient(to top, #0a0a0a, transparent)" }} />
           <div className="mx-auto max-w-3xl">
             <div className="rounded-3xl border border-white/10 bg-[#141414] shadow-[0_10px_50px_rgba(0,0,0,0.55)] transition-colors focus-within:border-white/25">
               <textarea
@@ -568,11 +685,15 @@ export function CompliancePage() {
                   <span className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10.5px] text-white/40">
                     <Activity className="h-3 w-3" /> Live findings
                   </span>
+                  {conversationId && (
+                    <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/15 bg-emerald-500/[0.05] px-2.5 py-1 text-[10.5px] text-emerald-500/70">
+                      <CheckCircle2 className="h-3 w-3" /> Saved
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={() => sendMessage()}
                   disabled={!canSend}
-                  aria-label="Send message"
                   className={cn(
                     "flex h-9 w-9 items-center justify-center rounded-full transition-all",
                     canSend
@@ -592,18 +713,14 @@ export function CompliancePage() {
       </div>
 
       {/* ── INSIGHTS PANEL ──────────────────────────────────────────── */}
-      <aside
-        className={cn(
-          "shrink-0 overflow-hidden border-l border-white/[0.06] bg-[#0c0c0c] transition-all duration-300",
-          panelOpen ? "w-[340px]" : "w-0 border-l-0"
-        )}
-      >
+      <aside className={cn(
+        "shrink-0 overflow-hidden border-l border-white/[0.06] bg-[#0c0c0c] transition-all duration-300",
+        panelOpen ? "w-[340px]" : "w-0 border-l-0"
+      )}>
         <div className="flex h-full w-[340px] flex-col">
           {/* readiness */}
           <div className="border-b border-white/[0.06] p-5">
-            <p className="mb-4 text-[10.5px] font-medium uppercase tracking-widest text-white/30">
-              SOC 2 Readiness
-            </p>
+            <p className="mb-4 text-[10.5px] font-medium uppercase tracking-widest text-white/30">SOC 2 Readiness</p>
             {readinessPct !== null ? (
               <div className="flex items-center gap-5">
                 <ReadinessRing pct={readinessPct} />
@@ -624,9 +741,7 @@ export function CompliancePage() {
                 </div>
               </div>
             ) : (
-              <p className="text-[12px] leading-relaxed text-white/25">
-                Send a message to compute your live control scorecard.
-              </p>
+              <p className="text-[12px] leading-relaxed text-white/25">Send a message to compute your live control scorecard.</p>
             )}
           </div>
 
@@ -634,18 +749,13 @@ export function CompliancePage() {
           <div className="flex gap-1 border-b border-white/[0.06] p-2">
             {([
               { id: "controls", label: "Controls", icon: ListChecks, count: controlsStatus.length  },
-              { id: "memory",   label: "Memory",   icon: Database,   count: latestMemories.length },
+              { id: "memory",   label: "Memory",   icon: Database,   count: latestMemories.length  },
             ] as const).map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
+              <button key={t.id} onClick={() => setTab(t.id)}
                 className={cn(
                   "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[11.5px] font-medium transition-colors",
-                  tab === t.id
-                    ? "bg-white/[0.08] text-white"
-                    : "text-white/35 hover:bg-white/[0.04] hover:text-white/70"
-                )}
-              >
+                  tab === t.id ? "bg-white/[0.08] text-white" : "text-white/35 hover:bg-white/[0.04] hover:text-white/70"
+                )}>
                 <t.icon className="h-3.5 w-3.5" />
                 {t.label}
                 {t.count > 0 && (
@@ -658,11 +768,9 @@ export function CompliancePage() {
           {/* tab content */}
           <div className={cn("flex-1 space-y-2 p-3", NO_SCROLLBAR)}>
             {tab === "controls" ? (
-              controlsStatus.length === 0 ? (
-                <EmptyPanel icon={ListChecks} title="No controls scored yet" body="Ask a question to see per-control status." />
-              ) : (
-                controlsStatus.map(c => <ControlRow key={c.controlId} ctrl={c} />)
-              )
+              controlsStatus.length === 0
+                ? <EmptyPanel icon={ListChecks} title="No controls scored yet" body="Ask a question to see per-control status." />
+                : controlsStatus.map(c => <ControlRow key={c.controlId} ctrl={c} />)
             ) : latestMemories.length === 0 ? (
               <EmptyPanel icon={Database} title="No memories recalled yet" body="See which past findings the agent pulls into each answer." />
             ) : (
@@ -677,20 +785,6 @@ export function CompliancePage() {
           </div>
         </div>
       </aside>
-    </div>
-  );
-}
-
-function EmptyPanel({
-  icon: Icon, title, body,
-}: { icon: React.ComponentType<{ className?: string }>; title: string; body: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center px-4 py-14 text-center">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.02]">
-        <Icon className="h-4 w-4 text-white/20" />
-      </div>
-      <p className="text-[12px] font-medium text-white/40">{title}</p>
-      <p className="mt-1 text-[11px] leading-relaxed text-white/20">{body}</p>
     </div>
   );
 }
